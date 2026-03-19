@@ -13,20 +13,35 @@ class Settings(BaseSettings):
         description="AWS region where Bedrock agent is deployed",
         validation_alias="AWS_REGION"
     )
-    BEDROCK_AGENT_ID: str = Field(
+    COORDINATOR_BEDROCK_AGENT_ID: str = Field(
         default=None,
         description="The unique identifier of the Bedrock agent to use",
-        validation_alias="BEDROCK_AGENT_ID"
+        validation_alias="COORDINATOR_BEDROCK_AGENT_ID"
     )
-    BEDROCK_AGENT_ALIAS_ID: str = Field(
+    COORDINATOR_BEDROCK_AGENT_ALIAS_ID: str = Field(
         default=None,
         description="The alias identifier of the Bedrock agent to use",
-        validation_alias="BEDROCK_AGENT_ALIAS_ID"
+        validation_alias="COORDINATOR_BEDROCK_AGENT_ALIAS_ID"
     )
-    BEDROCK_SESSION_ID: Optional[str] = Field(
-        default=uuid.uuid4().hex,  # Generate a random session ID if not provided
-        description="The session identifier for the Bedrock agent interaction",
-        validation_alias="BEDROCK_SESSION_ID"
+    SQL_GENERATOR_BEDROCK_AGENT_ID: str = Field(
+        default=None,
+        description="The unique identifier of the SQL Generator agent to use",
+        validation_alias="SQL_GENERATOR_BEDROCK_AGENT_ID"
+    )
+    SQL_GENERATOR_BEDROCK_AGENT_ALIAS_ID: str = Field(
+        default=None,
+        description="The alias identifier of the SQL Generator agent to use",
+        validation_alias="SQL_GENERATOR_BEDROCK_AGENT_ALIAS_ID"
+    )
+    SQL_EXECUTOR_BEDROCK_AGENT_ID: str = Field(
+        default=None,
+        description="The unique identifier of the SQL Executor agent to use",
+        validation_alias="SQL_EXECUTOR_BEDROCK_AGENT_ID"
+    )
+    SQL_EXECUTOR_BEDROCK_AGENT_ALIAS_ID: str = Field(
+        default=None,
+        description="The alias identifier of the SQL Executor agent to use",
+        validation_alias="SQL_EXECUTOR_BEDROCK_AGENT_ALIAS_ID"
     )
 
      # Pydantic Settings configuration

@@ -26,7 +26,7 @@ requires = ["uv_build>=0.8.17,<0.9.0"]
 build-backend = "uv_build"
 
 [project.scripts]
-smart-report-analyst = "smart-report-analyst.__main__:main"
+smart-report-analyst = "smart_report_analyst.__main__:main"
 
 # No build system needed - this is just for dependency management
 
