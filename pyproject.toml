@@ -1,0 +1,36 @@
+[project]
+name = "smart-report-analyst"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "Flask-Session==0.8.0",
+    "pydantic_core>=2.41.1",
+    "PyJWT==2.10.1",
+    "pyparsing==3.2.3",
+    "python-dotenv==1.1.1",
+    "requests==2.32.5",
+    "typing-inspection>=0.4.2",
+    "typing_extensions==4.15.0",
+    "openai-agents>=0.2.10",
+    "flask-socketio>=5.5.1",
+    "websockets>=15.0.1",
+    "pytz>=2025.2",
+    "ruff>=0.15.1",
+    "pytest>=9.0.2",
+    "boto3>=1.42.71",
+    "streamlit>=1.55.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.17,<0.9.0"]
+build-backend = "uv_build"
+
+[project.scripts]
+smart-report-analyst = "smart-report-analyst.__main__:main"
+
+# No build system needed - this is just for dependency management
+
+[tool.uv]
+# Use 'copy' instead of 'hardlink' for OneDrive compatibility
+# Options: 'hardlink', 'copy', 'symlink'
+link-mode = "copy"
