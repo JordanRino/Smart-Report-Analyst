@@ -7,9 +7,11 @@ import streamlit as st
 from smart_report_analyst.service.bedrock.manager import BedrockManager
 
 from smart_report_analyst.service.streamlit.components import render_chat_input, render_conversation_history, render_export_button
+from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.streamlit.state import UIState
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 bedrock_manager = BedrockManager()
@@ -20,22 +22,29 @@ def handle_user_input(user_input: str):
     # Add user message to history
     UIState.add_message(role="user", content=user_input, message_type="user")
 
+    response = {}
+
     # Get agent response
     try:
         session_id = UIState.get_agent_session_id()
         
         # Show loading indicator
         with st.spinner("Analyzing your request..."):
-            response = bedrock_manager.invoke_orchestration(
+            response = bedrock_manager.invoke_agent(
                 prompt=user_input,
+                agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
+                agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
                 session_id=session_id,
             )
         
         # Add assistant response to history
         UIState.add_message(
             role="assistant",
-            content=response,
+            content=response.get("final_response"),
             message_type="assistant",
+            metadata={
+                "user_question": response.get("user_question"),
+            },
         )
         
         
@@ -43,8 +52,11 @@ def handle_user_input(user_input: str):
         logger.error(f"Error invoking agent: {e}")
         UIState.add_message(
             role="assistant",
-            content=f"Error: {str(e)}",
-            message_type="error",
+            content=response.get("final_response", "Sorry, something went wrong while processing your request."),
+            message_type="assistant",
+            metadata={
+                "user_question": response.get("user_question"),
+            },
         )
         st.error(f"Failed to get response: {e}")
 

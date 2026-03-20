@@ -7,6 +7,11 @@ import streamlit as st
 
 from smart_report_analyst.service.streamlit import config
 from smart_report_analyst.service.streamlit.state import UIState
+from smart_report_analyst.service.lambda_function.manager import LambdaManager
+from smart_report_analyst.service.feedback.manager import handle_positive_feedback
+from smart_report_analyst.config.settings import Settings
+
+settings = Settings()
 
 
 def render_chat_message(message: Dict[str, Any]):
@@ -46,10 +51,19 @@ def render_chat_message(message: Dict[str, Any]):
         if role == config.MESSAGE_ASSISTANT and message_type != config.MESSAGE_ERROR:
             # Add feedback buttons for assistant messages
             if feedback is None:
-                if st.button("👍", key=f"like_{message['id']}", help = "Mark this response as helpful to help the agent improve its reponses"):
-                    message["feedback"] = "like"
-                    st.success("Feedback: Like")
+                if st.button(
+                    "👍", key=f"like_{message['id']}", 
+                    help = "Mark this response as helpful to help the agent improve its reponses"
+                ):
+                    result = handle_positive_feedback(message_id)
+
+                    if result.get("status") == "success":
+                        st.success("👍 Thanks for your feedback!")
+                    else:
+                        st.warning(f"👍 Feedback saved, but issue: {result['message']}")
+
                     st.rerun()
+                
             else:
                 st.caption("👍 Feedback submitted")
 

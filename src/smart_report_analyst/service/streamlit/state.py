@@ -29,7 +29,12 @@ class UIState:
             }
 
     @staticmethod
-    def add_message(role: str, content: str, message_type: str = None):
+    def add_message(
+        role: str,
+        content: str,
+        message_type: str = None,
+        metadata: Dict[str, Any] = None,
+    ):
         """Add a message to conversation history."""
         UIState.initialize()
         message = {
@@ -39,8 +44,20 @@ class UIState:
             "timestamp": datetime.now().isoformat(),
             "message_type": message_type or config.MESSAGE_ASSISTANT,
             "feedback": None,
+            "metadata": metadata or {},
         }
         st.session_state[config.SESSION_CONVERSATION_HISTORY].append(message)
+
+    @staticmethod
+    def set_feedback(message_id: str, feedback: str):
+        """Set feedback for a specific message."""
+        UIState.initialize()
+        history = st.session_state[config.SESSION_CONVERSATION_HISTORY]
+
+        for message in history:
+            if message.get("id") == message_id:
+                message["feedback"] = feedback
+                break
 
     @staticmethod
     def get_message_by_id(message_id: str) -> Dict[str, Any] | None:

@@ -1,6 +1,6 @@
 """Streamlit UI service."""
 
-from .manager import run_app
+from smart_report_analyst.service.streamlit.manager import run_app
 
 __all__ = [
     "run_app",

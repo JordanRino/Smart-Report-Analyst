@@ -1,10 +1,12 @@
 import asyncio
 import logging
 import uuid
+import subprocess
+from pathlib import Path
 
 from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.bedrock.manager import BedrockManager
-from smart_report_analyst.service.streamlit import run_app
+
 logger = logging.getLogger(__name__)
 settings = Settings()
 
@@ -40,16 +42,16 @@ class SmartReportAnalystApp:
 
 
 def run_streamlit():
-    """Start the Streamlit UI application.
+    """Start the Streamlit UI application via CLI."""
     
-    This function sets up logging and runs the Streamlit web interface.
-    Run with: streamlit run streamlit_app.py
-    """
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
     logger.info("Starting Smart Report Analyst Streamlit UI")
-        
-    run_app()
+
+    # Get absolute path to manager.py
+    streamlit_file = Path(__file__).parent / "service/streamlit/manager.py"
+
+    # Run Streamlit properly
+    subprocess.run([
+        "streamlit",
+        "run",
+        str(streamlit_file)
+    ])

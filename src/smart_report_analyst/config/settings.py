@@ -13,6 +13,16 @@ class Settings(BaseSettings):
         description="AWS region where Bedrock agent is deployed",
         validation_alias="AWS_REGION"
     )
+    SINGLE_COORDINATOR_BEDROCK_AGENT_ID: Optional[str] = Field(
+        default=None,
+        description="The unique identifier of the single coordinator Bedrock agent to use for all interactions.",
+        validation_alias="SINGLE_COORDINATOR_BEDROCK_AGENT_ID"
+    )
+    SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID: Optional[str] = Field(
+        default=None,
+        description="The alias identifier of the single coordinator Bedrock agent to use for all interactions.",
+        validation_alias="SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID"
+    )
     COORDINATOR_BEDROCK_AGENT_ID: str = Field(
         default=None,
         description="The unique identifier of the Bedrock agent to use",
@@ -42,6 +52,11 @@ class Settings(BaseSettings):
         default=None,
         description="The alias identifier of the SQL Executor agent to use",
         validation_alias="SQL_EXECUTOR_BEDROCK_AGENT_ALIAS_ID"
+    )
+    STORE_SQL_LAMBDA_FUNCTION_NAME: str = Field(
+        default="store_sql_sra",
+        description="The name of the Lambda function that stores SQL queries and execution results",
+        validation_alias="STORE_SQL_LAMBDA_FUNCTION_NAME"
     )
 
      # Pydantic Settings configuration

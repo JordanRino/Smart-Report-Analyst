@@ -1,0 +1,148 @@
+1️⃣ Basic retrieval (very easy)
+
+Tests: simple SELECT
+
+Question:
+What banks are included in the dataset?
+
+Expected SQL pattern:
+
+SELECT DISTINCT Bank
+FROM sba_loans_kendra;
+2️⃣ Simple filtering
+
+Tests: WHERE clause
+
+Question:
+Show the first 10 loans issued by Wells Fargo.
+
+Expected SQL pattern:
+
+SELECT *
+FROM sba_loans_kendra
+WHERE Bank = 'Wells Fargo'
+LIMIT 10;
+3️⃣ Basic aggregation
+
+Tests: COUNT
+
+Question:
+How many total loans are in the dataset?
+
+Expected SQL pattern:
+
+SELECT COUNT(*)
+FROM sba_loans_kendra;
+4️⃣ Grouping
+
+Tests: GROUP BY
+
+Question:
+How many loans were issued by each bank?
+
+Expected SQL pattern:
+
+SELECT Bank, COUNT(*) AS total_loans
+FROM sba_loans_kendra
+GROUP BY Bank
+ORDER BY total_loans DESC;
+5️⃣ Aggregation with filter
+
+Tests: WHERE + COUNT
+
+Question:
+How many loans were charged off?
+
+Expected SQL pattern:
+
+SELECT COUNT(*)
+FROM sba_loans_kendra
+WHERE MIS_Status = 'CHGOFF';
+6️⃣ Multi-condition filter
+
+Tests: AND conditions
+
+Question:
+How many loans from Bank of America were paid in full?
+
+Expected SQL pattern:
+
+SELECT COUNT(*)
+FROM sba_loans_kendra
+WHERE Bank = 'Bank of America'
+AND MIS_Status = 'P I F';
+7️⃣ Numeric aggregation
+
+Tests: SUM
+
+Question:
+What is the total loan amount disbursed by each bank?
+
+Expected SQL pattern:
+
+SELECT Bank, SUM(DisbursementGross) AS total_disbursed
+FROM sba_loans_kendra
+GROUP BY Bank
+ORDER BY total_disbursed DESC;
+8️⃣ Business insight query
+
+Tests: grouping + filtering + aggregation
+
+Question:
+Which banks have the highest number of charged off loans?
+
+Expected SQL pattern:
+
+SELECT Bank, COUNT(*) AS charged_off_loans
+FROM sba_loans_kendra
+WHERE MIS_Status = 'CHGOFF'
+GROUP BY Bank
+ORDER BY charged_off_loans DESC;
+9️⃣ Multi-metric aggregation
+
+Tests: multiple aggregations
+
+Question:
+For each bank, show the number of loans, total disbursed amount, and average loan size.
+
+Expected SQL pattern:
+
+SELECT
+    Bank,
+    COUNT(*) AS total_loans,
+    SUM(DisbursementGross) AS total_disbursed,
+    AVG(DisbursementGross) AS avg_loan_size
+FROM sba_loans_kendra
+GROUP BY Bank
+ORDER BY total_disbursed DESC;
+🔟 Hard analytical question
+
+Tests: reasoning + grouping + ordering
+
+Question:
+Which bank has the highest loan default rate?
+
+Expected SQL pattern:
+
+SELECT
+    Bank,
+    SUM(CASE WHEN MIS_Status = 'CHGOFF' THEN 1 ELSE 0 END) AS charged_off,
+    COUNT(*) AS total_loans,
+    SUM(CASE WHEN MIS_Status = 'CHGOFF' THEN 1 ELSE 0 END) / COUNT(*) AS default_rate
+FROM sba_loans_kendra
+GROUP BY Bank
+ORDER BY default_rate DESC;
+🚀 Bonus (Very Hard — Good Agent Test)
+
+Question:
+Which state has the highest total SBA loan disbursement amount?
+
+Expected SQL pattern:
+
+SELECT
+    State,
+    SUM(DisbursementGross) AS total_disbursement
+FROM sba_loans_kendra
+GROUP BY State
+ORDER BY total_disbursement DESC
+LIMIT 1;
