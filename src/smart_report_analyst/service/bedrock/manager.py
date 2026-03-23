@@ -37,13 +37,31 @@ class BedrockManager:
                     agentAliasId=agent_alias_id,
                     sessionId=session_id,
                     inputText=prompt,
+                    enableTrace=True,
                 )
 
                 completion = ""
+                tool_result = None
 
                 for event in response.get("completion"):
-                    chunk = event["chunk"]
-                    completion = completion + chunk["bytes"].decode()
+                    if "chunk" in event:
+                        chunk = event["chunk"]
+                        completion = completion + chunk["bytes"].decode()
+                    if "trace" in event:
+                        trace = event["trace"].get("trace", {})
+                        orchestration = trace.get("orchestrationTrace", {})
+                        observation = orchestration.get("observation", {})
+
+                        if "actionGroupInvocationOutput" in observation:
+                            action_output = observation.get("actionGroupInvocationOutput")
+                            if action_output and action_output.get("text"):
+                                raw_text = action_output["text"]
+                                try:
+                                    tool_result = json.loads(raw_text)
+                                    print (f"\n Tool result: {json.dumps(tool_result, indent=2)}")
+                                    logger.info(f"Tool result: {json.dumps(tool_result)}")
+                                except json.JSONDecodeError:
+                                    tool_result = raw_text
 
             except ClientError as e:
                 logger.error(f"Couldn't invoke agent. {e}")
@@ -51,6 +69,7 @@ class BedrockManager:
             formatted_response = {
                 "final_response": completion,
                 "user_question": prompt,
+                "tool_result": tool_result,
             }
             return formatted_response
     

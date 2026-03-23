@@ -1177,6 +1177,19 @@ wheels = [
 ]
 
 [[package]]
+name = "reportlab"
+version = "4.4.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "pillow" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/48/57/28bfbf0a775b618b6e4d854ef8dd3f5c8988e5d614d8898703502a35f61c/reportlab-4.4.10.tar.gz", hash = "sha256:5cbbb34ac3546039d0086deb2938cdec06b12da3cdb836e813258eb33cd28487", size = 3714962, upload-time = "2026-02-12T10:45:21.325Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/2e/e1798b8b248e1517e74c6cdf10dd6edd485044e7edf46b5f11ffcc5a0add/reportlab-4.4.10-py3-none-any.whl", hash = "sha256:5abc815746ae2bc44e7ff25db96814f921349ca814c992c7eac3c26029bf7c24", size = 1955400, upload-time = "2026-02-12T10:45:18.828Z" },
+]
+
+[[package]]
 name = "requests"
 version = "2.32.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1324,12 +1337,14 @@ dependencies = [
     { name = "flask-session" },
     { name = "flask-socketio" },
     { name = "openai-agents" },
+    { name = "pandas" },
     { name = "pydantic-core" },
     { name = "pyjwt" },
     { name = "pyparsing" },
     { name = "pytest" },
     { name = "python-dotenv" },
     { name = "pytz" },
+    { name = "reportlab" },
     { name = "requests" },
     { name = "ruff" },
     { name = "streamlit" },
@@ -1344,12 +1359,14 @@ requires-dist = [
     { name = "flask-session", specifier = "==0.8.0" },
     { name = "flask-socketio", specifier = ">=5.5.1" },
     { name = "openai-agents", specifier = ">=0.2.10" },
+    { name = "pandas", specifier = ">=2.3.3" },
     { name = "pydantic-core", specifier = ">=2.41.1" },
     { name = "pyjwt", specifier = "==2.10.1" },
     { name = "pyparsing", specifier = "==3.2.3" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "python-dotenv", specifier = "==1.1.1" },
     { name = "pytz", specifier = ">=2025.2" },
+    { name = "reportlab", specifier = ">=4.4.10" },
     { name = "requests", specifier = "==2.32.5" },
     { name = "ruff", specifier = ">=0.15.1" },
     { name = "streamlit", specifier = ">=1.55.0" },

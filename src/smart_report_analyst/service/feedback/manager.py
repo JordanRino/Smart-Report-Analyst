@@ -32,21 +32,34 @@ def handle_positive_feedback(message_id: str):
 
 
     metadata = message.get("metadata", {})
-    user_question = metadata.get("user_question")
-    agent_response = message.get("content")
+    if metadata:
+        tool_result = metadata.get("tool_result", {})
+        if tool_result:
+            refined_user_question = tool_result.get("refined_user_question")
+            executed_sql = tool_result.get("executed_sql")
+            to_store = tool_result.get("to_store")
+            
+    
 
-    if not user_question or not agent_response:
-        logger.warning("Missing user question or agent response in metadata")
+    if not refined_user_question or not executed_sql:
+        logger.warning("Missing refined user question or executed SQL in metadata")
         return {"status": "error", "message": "Missing metadata"}
     
+    if not to_store:
+        logger.info("Metadata indicates this query is already stored or a similar query is stored, so skipping Lambda invocation.")
+        return {
+            "status": "success",
+            "message": "Query skipped as the query or a similar one is already stored.",
+        }
+
     # After we get the metadata we Invoke Lambda
     try:
         lambda_manager = LambdaManager()
 
         payload = {
             "parameters": [
-                {"name": "query", "value": user_question},
-                {"name": "refined_user_question", "value": agent_response},
+                {"name": "refined_user_question", "value": refined_user_question},
+                {"name": "query", "value": executed_sql},
             ]
         }
 

@@ -7,6 +7,7 @@ import streamlit as st
 from smart_report_analyst.service.bedrock.manager import BedrockManager
 
 from smart_report_analyst.service.streamlit.components import render_chat_input, render_conversation_history, render_export_button
+from smart_report_analyst.service.report_generation import generate_pdf
 from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.streamlit.state import UIState
 
@@ -36,14 +37,22 @@ def handle_user_input(user_input: str):
                 agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
                 session_id=session_id,
             )
-        
+
+        tool_result = response.get("tool_result")
+
+        pdf_buffer = None
+        if tool_result and tool_result.get("results"):
+            pdf_buffer = generate_pdf(tool_result, user_input)
+
         # Add assistant response to history
         UIState.add_message(
             role="assistant",
             content=response.get("final_response"),
             message_type="assistant",
-            metadata={
+                metadata={
                 "user_question": response.get("user_question"),
+                "tool_result": tool_result,
+                "pdf_buffer": pdf_buffer,
             },
         )
         

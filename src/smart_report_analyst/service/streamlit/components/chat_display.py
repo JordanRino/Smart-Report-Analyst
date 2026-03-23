@@ -49,6 +49,19 @@ def render_chat_message(message: Dict[str, Any]):
             st.caption(time_str)
 
         if role == config.MESSAGE_ASSISTANT and message_type != config.MESSAGE_ERROR:
+
+            metadata = message.get("metadata", {})
+            pdf_buffer = metadata.get("pdf_buffer")
+
+            if pdf_buffer:
+                st.download_button(
+                    label="📄 Download Report",
+                    data=pdf_buffer,
+                    file_name="sba_report.pdf",
+                    mime="application/pdf",
+                    key=f"download_{message['id']}"  # unique key is important
+                )
+
             # Add feedback buttons for assistant messages
             if feedback is None:
                 if st.button(
