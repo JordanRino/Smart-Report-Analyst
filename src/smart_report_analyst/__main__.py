@@ -3,8 +3,7 @@ import argparse
 import sys
 import logging
 
-from smart_report_analyst.app import SmartReportAnalystApp, run_streamlit
-
+from smart_report_analyst.app import SmartReportAnalystApp, run_streamlit, run_chainlit
 def main():
     """Main entry point that determines which mode to run.
     
@@ -29,12 +28,20 @@ def main():
         help="Run Streamlit UI",
     )
 
+    parser.add_argument(
+        "--chainlit",
+        action="store_true",
+        help="Run Chainlit UI",
+    )
+
     args = parser.parse_args()
 
     app = SmartReportAnalystApp()
 
     if args.streamlit:
         run_streamlit()
+    elif args.chainlit:
+        run_chainlit()
     else:
         asyncio.run(app.run_cli())
 

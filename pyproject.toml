@@ -21,6 +21,7 @@ dependencies = [
     "streamlit>=1.55.0",
     "reportlab>=4.4.10",
     "pandas>=2.3.3",
+    "chainlit>=2.10.0",
 ]
 
 [build-system]

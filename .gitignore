@@ -18,3 +18,9 @@ client_secret.json
 *.json.bak
 *.key
 *.pem
+
+# Chainlit
+.chainlit/
+
+# Generated files (reports, uploads, etc.)
+.files/

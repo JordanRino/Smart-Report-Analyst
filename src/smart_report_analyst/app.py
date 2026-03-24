@@ -31,7 +31,13 @@ class SmartReportAnalystApp:
                 if not user_prompt:
                     continue
                     
-                response = await asyncio.to_thread(self.bedrock_manager.invoke_orchestration, user_prompt, session_id)
+                response = await asyncio.to_thread(
+                    self.bedrock_manager.invoke_agent,
+                    user_prompt,
+                    settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
+                    settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
+                    session_id
+                )
                 print(f"\nSmart Report Analyst: {response}\n")
             except KeyboardInterrupt:
                 print("\nGoodbye!")
@@ -54,4 +60,18 @@ def run_streamlit():
         "streamlit",
         "run",
         str(streamlit_file)
+    ])
+
+def run_chainlit():
+    """Start the Chainlit UI application via CLI."""
+
+    logger.info("Starting Smart Report Analyst Chainlit UI")
+
+    chainlit_file = Path(__file__).parent / "ui/chainlit/manager.py"
+
+    subprocess.run([
+        "chainlit",
+        "run",
+        str(chainlit_file),
+        "-w"  # auto-reload (super useful for dev)
     ])
