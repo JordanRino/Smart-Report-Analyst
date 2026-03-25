@@ -1,7 +1,7 @@
 import boto3
 import logging
 import json
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EventStreamError
 from smart_report_analyst.config.settings import Settings
 
 settings = Settings()
@@ -73,6 +73,55 @@ class BedrockManager:
             }
             return formatted_response
     
+    def invoke_agent_stream(self, prompt, agent_id, agent_alias_id, session_id):
+        try:
+            response = self.agents_runtime_client.invoke_agent(
+                agentId=agent_id,
+                agentAliasId=agent_alias_id,
+                sessionId=session_id,
+                inputText=prompt,
+                enableTrace=True,
+                streamingConfigurations={"streamFinalResponse": True},
+            )
+            
+            try:
+                for event in response.get("completion"):
+                    if "chunk" in event:
+                        yield {
+                            "type": "chunk",
+                            "data": event["chunk"]["bytes"].decode(),
+                        }
+
+                    if "trace" in event:
+                        trace = event["trace"].get("trace", {})
+                        orchestration = trace.get("orchestrationTrace", {})
+                        observation = orchestration.get("observation", {})
+
+                        if "actionGroupInvocationOutput" in observation:
+                            action_output = observation.get("actionGroupInvocationOutput")
+
+                            if action_output and action_output.get("text"):
+                                try:
+                                    tool_result = json.loads(action_output["text"])
+                                except:
+                                    tool_result = action_output["text"]
+
+                                yield {
+                                    "type": "tool_result",
+                                    "data": tool_result,
+                                }
+
+            except EventStreamError as e:
+                logger.error(f"Stream error: {e}")
+
+                yield {
+                    "type": "error",
+                    "data": str(e),
+                }
+
+        except ClientError as e:
+            logger.error(f"Couldn't invoke agent. {e}")
+            raise
     # def invoke_orchestration(self, prompt, session_id):
     #     """
     #     Sends a prompt for the orchestration to process and respond to.
