@@ -58,6 +58,32 @@ class Settings(BaseSettings):
         description="The name of the Lambda function that stores SQL queries and execution results",
         validation_alias="STORE_SQL_LAMBDA_FUNCTION_NAME"
     )
+    MYSQL_HOST: str = Field(
+        default=None,
+        description="The hostname of the MySQL database",
+        validation_alias="MYSQL_HOST"
+    )
+    MYSQL_PORT: int = Field(
+        default=3306,
+        description="The port of the MySQL database",
+        validation_alias="MYSQL_PORT"
+    )
+    MYSQL_USER: str = Field(
+        default=None,
+        description="The username for the MySQL database",
+        validation_alias="MYSQL_USER"
+    )
+    MYSQL_PASSWORD: str = Field(
+        default=None,
+        description="The password for the MySQL database",
+        validation_alias="MYSQL_PASSWORD"
+    )
+    MYSQL_DB: str = Field(
+        default=None,
+        description="The name of the MySQL database",
+        validation_alias="MYSQL_DB"
+    )
+
 
      # Pydantic Settings configuration
     model_config = SettingsConfigDict(

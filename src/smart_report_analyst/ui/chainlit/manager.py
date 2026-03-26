@@ -26,18 +26,14 @@ data_layer = MySQLDataLayer(
 async def on_chat_start():
     """Initialize a new chat session."""
 
-    user = cl.user_session.get("user")
+    session_id = str(uuid.uuid4())  # always generate a session id
 
-    if user:
-        thread = await data_layer.create_thread(
-            user_id=user.identifier,
-            name="New Conversation",
-        )
-        session_id = thread.id
-    else:
-        session_id = str(uuid.uuid4())
+    thread = await data_layer.create_thread(
+        user_id=session_id,
+        name="New Conversation",
+    )
 
-    cl.user_session.set("session_id", session_id)
+    cl.user_session.set("session_id", thread.id)
     cl.user_session.set("chat_history", [])
     cl.user_session.set("last_response", None)
     cl.user_session.set("last_tool_result", None)
