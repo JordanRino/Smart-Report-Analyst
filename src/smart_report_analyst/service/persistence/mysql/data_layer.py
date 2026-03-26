@@ -1,9 +1,10 @@
 """MySQL Data Layer for Chainlit persistence."""
 
+from __future__ import annotations
+
 import aiomysql
 import json
 
-from __future__ import annotations
 from typing import Optional, Dict, Any
 from chainlit.data import BaseDataLayer
 from typing import Any, Dict, Optional, List
