@@ -1,12 +1,13 @@
 """MySQL Data Layer for Chainlit persistence."""
 
-from __future__ import annotations
-
 import aiomysql
-from typing import Optional, Dict, Any
+import json
 
+from __future__ import annotations
+from typing import Optional, Dict, Any
 from chainlit.data import BaseDataLayer
 from typing import Any, Dict, Optional, List
+
 
 # Minimal replacements for Chainlit types
 class ThreadDict:
@@ -159,6 +160,8 @@ class MySQLDataLayer(BaseDataLayer):
     # ----------------- Element Methods -----------------
     async def create_element(self, element_dict: ElementDict):
         await self.init_pool()
+        if isinstance(element_dict.metadata, dict):
+            element_dict.metadata = json.dumps(element_dict.metadata)
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
