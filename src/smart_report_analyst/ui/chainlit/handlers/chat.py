@@ -65,8 +65,8 @@ async def on_message(message: cl.Message):
     bedrock_session_id = cl.user_session.get("bedrock_session_id")
 
     if not thread_id:
-        thread_id = str(uuid.uuid4())
-        cl.user_session.set("thread_id", thread_id)
+        await cl.Message(content="No active session. Please select or create one.").send()
+        return
 
     if not bedrock_session_id:
         bedrock_session_id = f"br-{uuid.uuid4().hex}"

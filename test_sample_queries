@@ -148,4 +148,4 @@ ORDER BY total_disbursement DESC
 LIMIT 1;
 
 
-11. How many loans were issued by each bank and what percentage of these loans for each bank were paind in full and not paid in full
+11. How many loans were issued by each bank and what percentage of these loans for each bank were paid in full and not paid in full

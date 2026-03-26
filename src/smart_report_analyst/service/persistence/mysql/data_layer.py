@@ -125,6 +125,25 @@ class MySQLDataLayer(BaseDataLayer):
                 )
                 thread_id = cur.lastrowid
                 return ThreadDict(id=str(thread_id), user_id=user_id, name=name, metadata=metadata)
+    
+    # ----------------- Messages -----------------
+    async def get_messages(self, session_id: str) -> list[Dict[str, Any]]:
+        """
+        Fetch all messages for a thread, ordered by creation time.
+        """
+        await self.init_pool()
+        async with self.pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT role, content, tool_result, created_at FROM chat_messages WHERE session_id=%s ORDER BY created_at ASC",
+                    (session_id,)
+                )
+                rows = await cur.fetchall()
+                # tool_result is JSON stored as string, parse it
+                for r in rows:
+                    if r.get("tool_result"):
+                        r["tool_result"] = json.loads(r["tool_result"])
+                return rows
 
     async def get_thread(self, thread_id: str) -> ThreadDict:
         raise NotImplementedError
@@ -173,6 +192,10 @@ class MySQLDataLayer(BaseDataLayer):
                         element_dict.content,
                         element_dict.metadata or None,
                     ),
+                )
+                await cur.execute(
+                    "UPDATE chat_sessions SET updated_at=NOW() WHERE id=%s",
+                    (element_dict.thread_id,)
                 )
                 return str(cur.lastrowid)
 
