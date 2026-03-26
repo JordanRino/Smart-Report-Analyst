@@ -42,22 +42,22 @@ async def on_chat_start():
 
     actions = []
 
-    # Add previous sessions as actions
+    # Previous sessions as actions
     for session in sessions:
         actions.append(
             cl.Action(
                 name="resume_chat",
-                value=str(session.id),
-                label=f"{session.name or 'Chat'} ({session.id})"
+                label=f"{session.name or 'Chat'} ({session.id})",
+                payload={"session_id": str(session.id)}  # <-- required now
             )
         )
 
-    # Add "New Chat" button
+    # New Chat button
     actions.append(
         cl.Action(
             name="new_chat",
-            value="new",
-            label="➕ New Chat"
+            label="➕ New Chat",
+            payload={"value": "new"}  # <-- required now
         )
     )
 
