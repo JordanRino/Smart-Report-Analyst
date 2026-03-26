@@ -19,6 +19,7 @@ data_layer = MySQLDataLayer(
 
 @cl.password_auth_callback
 async def auth_callback(username: str, password: str) -> Optional[cl.User]:
+    """Authenticate the user and store them in user_session for chat initialization."""
     await data_layer.init_pool()
 
     async with data_layer.pool.acquire() as conn:
@@ -31,13 +32,16 @@ async def auth_callback(username: str, password: str) -> Optional[cl.User]:
             if not row:
                 return None
 
+            # Verify password
             if bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
-                return cl.User(
+                user = cl.User(
                     identifier=str(row["id"]),
                     metadata={
                         "username": row["username"],
                         "role": row["role"],
                     },
                 )
+                cl.user_session.set("user", user)
+                return user
 
     return None
