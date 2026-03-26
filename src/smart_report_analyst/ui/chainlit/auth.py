@@ -34,6 +34,7 @@ async def auth_callback(username: str, password: str) -> Optional[cl.User]:
 
             # Verify password
             if bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
+                print("\nAuthentication successful")
                 user = cl.User(
                     identifier=str(row["id"]),
                     metadata={
@@ -41,5 +42,7 @@ async def auth_callback(username: str, password: str) -> Optional[cl.User]:
                         "role": row["role"],
                     },
                 )
+            else:
+                print("\nInvalid credentials")
 
     return None
