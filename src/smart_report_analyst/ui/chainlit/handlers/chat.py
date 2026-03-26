@@ -17,6 +17,7 @@ from smart_report_analyst.ui.chainlit.utils.formatting import (
     should_generate_report,
 )
 from smart_report_analyst.service.persistence.mysql.data_layer import MySQLDataLayer
+from smart_report_analyst.service.persistence.mysql.data_layer import ElementDict
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -77,12 +78,15 @@ async def on_message(message: cl.Message):
 
     # Persist user message
     try:
-        await data_layer.create_element({
-            "thread_id": session_id,
-            "role": "user",
-            "content": message.content,
-            "metadata": None,
-        })
+        await data_layer.create_element(
+            ElementDict(
+                thread_id=session_id,
+                role="user",
+                content=message.content,
+                metadata=None
+            )
+        )
+
     except Exception:
         logger.exception("Failed to save user message")
 
@@ -133,12 +137,14 @@ async def on_message(message: cl.Message):
 
             # Persist assistant message
             try:
-                await data_layer.create_element({
-                    "thread_id": session_id,
-                    "role": "assistant",
-                    "content": full_response,
-                    "metadata": tool_result or None,
-                })
+                await data_layer.create_element(
+                    ElementDict(
+                        thread_id=session_id,
+                        role="user",
+                        content=message.content,
+                        metadata=None
+                    )
+                )
             except Exception:
                 logger.exception("Failed to save assistant message")
 

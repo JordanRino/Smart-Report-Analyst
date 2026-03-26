@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 import chainlit as cl
 
+from smart_report_analyst.ui.chainlit.auth import auth_callback  # noqa
 from smart_report_analyst.ui.chainlit.handlers import chat  # noqa
 from smart_report_analyst.ui.chainlit.handlers import feedback  # noqa
 from smart_report_analyst.config.settings import Settings

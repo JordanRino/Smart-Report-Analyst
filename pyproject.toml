@@ -23,6 +23,7 @@ dependencies = [
     "pandas>=2.3.3",
     "chainlit>=2.10.0",
     "aiomysql>=0.3.2",
+    "bcrypt>=5.0.0",
 ]
 
 [build-system]
