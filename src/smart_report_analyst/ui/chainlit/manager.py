@@ -42,7 +42,8 @@ async def on_chat_start():
         metadata=None
     )
 
-    cl.user_session.set("session_id", thread.id)  # UUID for this session
+    cl.user_session.set("thread_id", str(thread.id))
+    cl.user_session.set("bedrock_session_id", f"br-{uuid.uuid4().hex}")
     cl.user_session.set("chat_history", [])
     cl.user_session.set("last_response", None)
     cl.user_session.set("last_tool_result", None)

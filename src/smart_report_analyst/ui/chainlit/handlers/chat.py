@@ -61,13 +61,16 @@ def _build_actions(response: Dict[str, Any]) -> List[cl.Action]:
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    session_id = cl.user_session.get("session_id")
+    thread_id = cl.user_session.get("thread_id")
+    bedrock_session_id = cl.user_session.get("bedrock_session_id")
 
-    if not session_id:
-        session_id = str(uuid.uuid4())
-        cl.user_session.set("session_id", session_id)
-        
-    cl.user_session.set("session_id", session_id)
+    if not thread_id:
+        thread_id = str(uuid.uuid4())
+        cl.user_session.set("thread_id", thread_id)
+
+    if not bedrock_session_id:
+        bedrock_session_id = f"br-{uuid.uuid4().hex}"
+        cl.user_session.set("bedrock_session_id", bedrock_session_id)
 
     history = cl.user_session.get("chat_history", [])
 
@@ -80,7 +83,7 @@ async def on_message(message: cl.Message):
     try:
         await data_layer.create_element(
             ElementDict(
-                thread_id=session_id,
+                thread_id=thread_id,
                 role="user",
                 content=message.content,
                 metadata=None
@@ -113,7 +116,7 @@ async def on_message(message: cl.Message):
                 prompt=message.content,
                 agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
                 agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
-                session_id=session_id,
+                session_id=bedrock_session_id,
             )
             for event in stream:
                 if event["type"] == "chunk":
@@ -139,10 +142,10 @@ async def on_message(message: cl.Message):
             try:
                 await data_layer.create_element(
                     ElementDict(
-                        thread_id=session_id,
-                        role="user",
-                        content=message.content,
-                        metadata=None
+                        thread_id=thread_id,
+                        role="assistant",
+                        content=full_response,
+                        metadata=tool_result or None,
                     )
                 )
             except Exception:
@@ -186,4 +189,5 @@ async def on_message(message: cl.Message):
     except Exception as exc: 
         logger.exception("Error while handling user message") 
         await cl.Message( 
-            content=f"Sorry, something went wrong while processing your request.\n\n{exc}" ).send()
+            content=f"Sorry, something went wrong while processing your request.\n\n{exc}" 
+        ).send()
