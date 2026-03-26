@@ -41,7 +41,5 @@ async def auth_callback(username: str, password: str) -> Optional[cl.User]:
                         "role": row["role"],
                     },
                 )
-                cl.user_session.set("user", user)
-                return user
 
     return None
