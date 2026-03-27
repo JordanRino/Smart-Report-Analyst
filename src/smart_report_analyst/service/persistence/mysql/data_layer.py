@@ -216,13 +216,13 @@ class MySQLDataLayer(BaseDataLayer):
                     return None
 
                 metadata = load_json(row.get("metadata")) or {}
-                return {
-                    "id": str(row["id"]),
-                    "identifier": row["identifier"],
-                    "metadata": metadata,
-                    "createdAt": row["created_at"],
-                    "updatedAt": row["updated_at"],
-                }
+                return User(
+                    id=str(row["id"]),
+                    identifier=row["identifier"],
+                    metadata=metadata,
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"]
+                )
 
     async def update_thread(self, thread: Dict[str, Any]) -> Dict[str, Any]:
         await self.init_pool()
