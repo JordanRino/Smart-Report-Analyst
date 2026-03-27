@@ -34,7 +34,7 @@ async def on_chat_start():
     
     # Create a new thread automatically
     thread = await data_layer.create_thread(
-        user_id=current_user.identifier,
+        user_id=current_user["identifier"],
         name="New Conversation",
         metadata=None
     )

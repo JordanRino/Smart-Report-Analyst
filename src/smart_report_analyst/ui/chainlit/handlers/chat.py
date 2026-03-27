@@ -91,55 +91,50 @@ async def on_message(message: cl.Message):
     tool_result = {}
 
     try:
-        with cl.Step(name="Bedrock Agent", type="llm", show_input=True) as step:
-            step.input = message.content
-            current_step = cl.context.current_step
+        # with cl.Step(name="Bedrock Agent", type="llm", show_input=True) as step:
+        #     step.input = message.content
+        #     current_step = cl.context.current_step
 
-            # response = await asyncio.to_thread(
-            #     bedrock_manager.invoke_agent,
-            #     prompt=message.content,
-            #     agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
-            #     agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
-            #     session_id=session_id,
-            # )
-            stream = bedrock_manager.invoke_agent_stream(
-                prompt=message.content,
-                agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
-                agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
-                session_id=bedrock_session_id,
-            )
-            for event in stream:
-                if event["type"] == "chunk":
-                    token = event["data"]
-                    full_response += token
+        # response = await asyncio.to_thread(
+        #     bedrock_manager.invoke_agent,
+        #     prompt=message.content,
+        #     agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
+        #     agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
+        #     session_id=session_id,
+        # )
+        stream = bedrock_manager.invoke_agent_stream(
+            prompt=message.content,
+            agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
+            agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
+            session_id=bedrock_session_id,
+        )
+        for event in stream:
+            if event["type"] == "chunk":
+                token = event["data"]
+                full_response += token
 
-                    await current_step.stream_token(token)
+            elif event["type"] == "tool_result":
+                tool_result = event["data"]
 
-                elif event["type"] == "tool_result":
-                    tool_result = event["data"]
+        history = cl.user_session.get("chat_history", [])
 
-            # final output for step UI
-            current_step.output = full_response 
+        history.append({
+            "role": "assistant",
+            "content": full_response
+        })
 
-            history = cl.user_session.get("chat_history", [])
-
-            history.append({
+        # Persist assistant message
+        try:
+            await data_layer.create_element({
+                "thread_id": thread_id,
                 "role": "assistant",
-                "content": full_response
+                "content": full_response,
+                "metadata": tool_result or None
             })
+        except Exception:
+            logger.exception("Failed to save assistant message")
 
-            # Persist assistant message
-            try:
-                await data_layer.create_element({
-                    "thread_id": thread_id,
-                    "role": "assistant",
-                    "content": full_response,
-                    "metadata": tool_result or None
-                })
-            except Exception:
-                logger.exception("Failed to save assistant message")
-
-            cl.user_session.set("chat_history", history)
+        cl.user_session.set("chat_history", history)
             
         # final_response = response.get("final_response", "Sorry, I could not generate a response.") 
         # tool_result = response.get("tool_result") or {}
