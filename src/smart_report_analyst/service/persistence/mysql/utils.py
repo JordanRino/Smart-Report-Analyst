@@ -2,7 +2,7 @@ from typing import Any, Dict
 import json
 
 
-def load_json(self, value: Any) -> Any:
+def load_json(value: Any) -> Any:
         if value is None:
             return None
         if isinstance(value, (dict, list)):
@@ -16,7 +16,7 @@ def load_json(self, value: Any) -> Any:
                 return value
         return value
 
-def dump_json(self, value: Any) -> Any:
+def dump_json(value: Any) -> Any:
     if value is None:
         return None
     if isinstance(value, (dict, list)):

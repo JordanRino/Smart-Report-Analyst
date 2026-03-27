@@ -213,7 +213,7 @@ class MySQLDataLayer(BaseDataLayer):
                 if not row:
                     return None
 
-                metadata = self._load_json(row.get("metadata")) or {}
+                metadata = load_json(row.get("metadata")) or {}
                 return {
                     "id": str(row["id"]),
                     "identifier": row["identifier"],
