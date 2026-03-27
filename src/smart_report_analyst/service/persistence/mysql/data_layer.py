@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any
 from chainlit.data import BaseDataLayer
 from typing import Any, Dict, Optional, List
 
+from smart_report_analyst.service.persistence.mysql.utils import load_json, dump_json
 
 class MySQLDataLayer(BaseDataLayer):
     def __init__(self, host, user, password, db, port=3306):
@@ -44,33 +45,69 @@ class MySQLDataLayer(BaseDataLayer):
         await self.init_pool()
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute("SELECT * FROM users WHERE id=%s", (identifier,))
+                await cur.execute(
+                    """
+                    SELECT id, identifier, metadata, created_at, updated_at
+                    FROM users
+                    WHERE identifier=%s OR id=%s
+                    LIMIT 1
+                    """,
+                    (identifier, identifier),
+                )
                 row = await cur.fetchone()
                 if row:
+                    metadata = load_json(row.get("metadata")) or {}
                     return {
                         "id": str(row["id"]),
-                        "username": row["username"],
-                        "role": row["role"]
-                    }   
+                        "identifier": row["identifier"],
+                        "metadata": metadata,
+                        "createdAt": row["created_at"],
+                        "updatedAt": row["updated_at"],
+                    }
         return None
 
     async def create_user(self, user: Dict[str, Any]) -> Dict[str, Any]:
         await self.init_pool()
+
+        identifier = user.get("identifier") or user.get("username") or user.get("id")
+        if not identifier:
+            raise ValueError("create_user requires 'identifier'")
+
+        metadata = dump_json(user.get("metadata") or {})
+
         async with self.pool.acquire() as conn:
-            async with conn.cursor() as cur:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
-                    "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)",
-                    (
-                        user["username"],
-                        user.get("password_hash", ""),
-                        user.get("role", "user"),
-                    ),
+                    """
+                    INSERT INTO users (identifier, metadata)
+                    VALUES (%s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        metadata = VALUES(metadata),
+                        updated_at = NOW()
+                    """,
+                    (identifier, metadata),
                 )
-                user_id = str(cur.lastrowid)
+
+                await cur.execute(
+                    """
+                    SELECT id, identifier, metadata, created_at, updated_at
+                    FROM users
+                    WHERE identifier=%s
+                    LIMIT 1
+                    """,
+                    (identifier,),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    raise RuntimeError("User insert succeeded but row could not be reloaded")
+
+                metadata = load_json(row.get("metadata")) or {}
                 return {
-                    "id": user_id,
-                    "username": user["username"],
-                    "role": user.get("role", "user"),
+                    "id": str(row["id"]),
+                    "identifier": row["identifier"],
+                    "metadata": metadata,
+                    "createdAt": row["created_at"],
+                    "updatedAt": row["updated_at"],
                 }
 
     # ----------------- Thread Methods -----------------
@@ -113,6 +150,8 @@ class MySQLDataLayer(BaseDataLayer):
 
         if metadata and isinstance(metadata, dict):
             metadata = json.dumps(metadata)
+        elif not metadata:
+            metadata = None
 
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
@@ -142,7 +181,7 @@ class MySQLDataLayer(BaseDataLayer):
                     return None
 
                 metadata = row.get("metadata")
-                if isinstance(metadata, str):
+                if metadata and isinstance(metadata, str):
                     try:
                         metadata = json.loads(metadata)
                     except:
@@ -163,7 +202,7 @@ class MySQLDataLayer(BaseDataLayer):
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
                     """
-                    SELECT u.id, u.username, u.role
+                    SELECT u.id, u.username, u.role, u.identifier, u.metadata
                     FROM users u
                     JOIN chat_sessions cs ON cs.user_id = u.id
                     WHERE cs.id = %s
@@ -174,18 +213,19 @@ class MySQLDataLayer(BaseDataLayer):
                 if not row:
                     return None
 
+                metadata = self._load_json(row.get("metadata")) or {}
                 return {
                     "id": str(row["id"]),
-                    "metadata": {
-                        "username": row["username"],
-                        "role": row["role"]
-                    }
+                    "identifier": row["identifier"],
+                    "metadata": metadata,
+                    "createdAt": row["created_at"],
+                    "updatedAt": row["updated_at"],
                 }
 
     async def update_thread(self, thread: Dict[str, Any]) -> Dict[str, Any]:
         await self.init_pool()
 
-        metadata = thread["metadata"]
+        metadata = dump_json(thread.get("metadata") or {})
         if isinstance(metadata, dict):
             metadata = json.dumps(metadata)
 
@@ -197,9 +237,12 @@ class MySQLDataLayer(BaseDataLayer):
                     SET name=%s, metadata=%s, updated_at=NOW()
                     WHERE id=%s
                     """,
-                    (thread["name"], metadata, thread["id"]),
+                    (thread.get("name"), metadata, thread["id"]),
                 )
-        return thread
+        updated = await self.get_thread(thread["id"])
+        if not updated:
+            return thread
+        return updated
 
     async def delete_thread(self, thread_id: str) -> None:
         await self.init_pool()
