@@ -153,7 +153,7 @@ class MySQLDataLayer(BaseDataLayer):
             metadata = None
 
         async with self.pool.acquire() as conn:
-            async with conn.cursor() as cur:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
                     "INSERT INTO chat_sessions (user_id, name, metadata) VALUES (%s, %s, %s)",
                     (user_id, name, metadata),
@@ -222,12 +222,14 @@ class MySQLDataLayer(BaseDataLayer):
     async def update_thread(self, thread: Dict[str, Any]) -> Dict[str, Any]:
         await self.init_pool()
 
-        metadata = dump_json(thread.get("metadata") or {})
-        if isinstance(metadata, dict):
-            metadata = json.dumps(metadata)
+        metadata = thread.get("metadata")
+        if metadata is not None:
+            metadata = dump_json(metadata) 
+        else:
+            metadata = None
 
         async with self.pool.acquire() as conn:
-            async with conn.cursor() as cur:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
                     """
                     UPDATE chat_sessions
@@ -244,7 +246,7 @@ class MySQLDataLayer(BaseDataLayer):
     async def delete_thread(self, thread_id: str) -> None:
         await self.init_pool()
         async with self.pool.acquire() as conn:
-            async with conn.cursor() as cur:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute("DELETE FROM chat_messages WHERE session_id=%s", (thread_id,))
                 await cur.execute("DELETE FROM chat_sessions WHERE id=%s", (thread_id,))
     
@@ -300,11 +302,13 @@ class MySQLDataLayer(BaseDataLayer):
         await self.init_pool()
 
         metadata = element_dict.get("metadata")
-        if isinstance(metadata, dict):
-            element_dict["metadata"] = json.dumps(metadata)
+        if metadata:
+            metadata = dump_json(metadata)
+        else:
+            metadata = None    
 
         async with self.pool.acquire() as conn:
-            async with conn.cursor() as cur:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
                     """
                     INSERT INTO chat_messages (session_id, role, content, tool_result)
@@ -314,17 +318,18 @@ class MySQLDataLayer(BaseDataLayer):
                         element_dict["thread_id"],
                         element_dict["role"],
                         element_dict["content"],
-                        element_dict.get("metadata") or None,
+                        metadata,
                     ),
                 )
-
+                last_id = str(cur.lastrowid)
+                
                 # Update last activity
                 await cur.execute(
                     "UPDATE chat_sessions SET updated_at=NOW() WHERE id=%s",
                     (element_dict["thread_id"],)
                 )
 
-                return str(cur.lastrowid)
+                return last_id
 
     async def get_element(self, element_id: str):
         raise NotImplementedError
