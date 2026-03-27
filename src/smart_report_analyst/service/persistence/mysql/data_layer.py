@@ -110,8 +110,13 @@ class MySQLDataLayer(BaseDataLayer):
                 )
 
     # ----------------- Thread Methods -----------------
-    async def list_threads(self, pagination: Dict, filters: Dict) -> Dict[str, Any]:
+    async def list_threads(self, pagination, filters) -> Dict[str, Any]:
         await self.init_pool()
+
+        user_id = filters.userId if hasattr(filters, "userId") else None
+        limit = pagination.first if hasattr(pagination, "first") else 20
+        offset = pagination.cursor if hasattr(pagination, "cursor") else 0
+
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 sql = """
@@ -120,7 +125,7 @@ class MySQLDataLayer(BaseDataLayer):
                 ORDER BY updated_at DESC
                 LIMIT %s OFFSET %s
                 """
-                await cur.execute(sql, (filters["user_id"], pagination["limit"], pagination["offset"]))
+                await cur.execute(sql, (user_id, limit, offset))
                 rows = await cur.fetchall()
 
                 threads = []
@@ -135,14 +140,14 @@ class MySQLDataLayer(BaseDataLayer):
 
                     threads.append({
                         "id": str(r["id"]),
-                        "name": r.get("name"),
+                        "name": r.get("name") or "Untitled Chat",
                         "userId": str(r["user_id"]),
                         "metadata": metadata,
-                        "createdAt": r["created_at"],
-                        "updatedAt": r["updated_at"],
+                        "createdAt": r["created_at"].isoformat() if hasattr(r["created_at"], 'isoformat') else str(r["created_at"]),
+                        "updatedAt": r["updated_at"].isoformat() if hasattr(r["updated_at"], 'isoformat') else str(r["updated_at"]),
                     })
 
-                return {"items": threads, "total": len(threads)}
+                return {"items": threads}
 
     async def create_thread(self, user_id: str, name: Optional[str] = None, metadata: Optional[Dict] = None) -> Dict[str, Any]:
         await self.init_pool()
@@ -322,7 +327,7 @@ class MySQLDataLayer(BaseDataLayer):
                     ),
                 )
                 last_id = str(cur.lastrowid)
-                
+
                 # Update last activity
                 await cur.execute(
                     "UPDATE chat_sessions SET updated_at=NOW() WHERE id=%s",
