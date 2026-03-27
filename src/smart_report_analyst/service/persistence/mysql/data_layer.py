@@ -114,18 +114,19 @@ class MySQLDataLayer(BaseDataLayer):
         await self.init_pool()
 
         user_id = filters.userId if hasattr(filters, "userId") else None
-        limit = pagination.first if hasattr(pagination, "first") else 20
-        offset = pagination.cursor if hasattr(pagination, "cursor") else 0
+        limit = getattr(pagination, "first", 20) or 20
+        offset = getattr(pagination, "cursor", 0) or 0
 
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 sql = """
-                SELECT * FROM chat_sessions
+                SELECT id, name, user_id, metadata, created_at, updated_at
+                FROM chat_sessions
                 WHERE user_id=%s
                 ORDER BY updated_at DESC
                 LIMIT %s OFFSET %s
                 """
-                await cur.execute(sql, (user_id, limit, offset))
+                await cur.execute(sql, (user_id, int(limit), int(offset)))
                 rows = await cur.fetchall()
 
                 threads = []
