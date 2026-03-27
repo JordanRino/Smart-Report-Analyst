@@ -9,6 +9,8 @@ from typing import Optional, Dict, Any
 from chainlit.data import BaseDataLayer
 from chainlit.user import PersistedUser, User
 from chainlit.types import PaginatedResponse, PageInfo
+from chainlit.element import ElementDict, Element
+
 from typing import Any, Dict, Optional, List
 
 from smart_report_analyst.service.persistence.mysql.utils import load_json, dump_json
@@ -317,14 +319,20 @@ class MySQLDataLayer(BaseDataLayer):
         raise NotImplementedError
 
     # ----------------- Element Methods -----------------
-    async def create_element(self, element_dict: Dict[str, Any]) -> str:
+    async def create_element(self, element ) -> str:
         await self.init_pool()
 
-        metadata = element_dict.get("metadata")
-        if metadata:
-            metadata = dump_json(metadata)
+        if isinstance(element, Element):
+            element_dict = element.to_dict()
         else:
-            metadata = None    
+            element_dict = element    
+
+        thread_id = element_dict.get("thread_id")
+        role = element_dict.get("role", "assistant")
+        content = element_dict.get("content")
+
+        metadata = element_dict.get("metadata")
+        metadata_json = dump_json(metadata) if metadata else None
 
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -334,10 +342,10 @@ class MySQLDataLayer(BaseDataLayer):
                     VALUES (%s, %s, %s, %s)
                     """,
                     (
-                        element_dict["thread_id"],
-                        element_dict["role"],
-                        element_dict["content"],
-                        metadata,
+                        thread_id,
+                        role,
+                        content,
+                        metadata_json,
                     ),
                 )
                 last_id = str(cur.lastrowid)

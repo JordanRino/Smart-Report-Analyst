@@ -8,6 +8,7 @@ import uuid
 from typing import Any, Dict, List
 
 import chainlit as cl
+from chainlit.data import get_data_layer
 
 from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.bedrock.manager import BedrockManager
@@ -21,7 +22,7 @@ from smart_report_analyst.service.persistence.mysql.data_layer import MySQLDataL
 logger = logging.getLogger(__name__)
 settings = Settings()
 bedrock_manager = BedrockManager()
-data_layer: MySQLDataLayer = cl.data_layer
+data_layer = get_data_layer()
 
 def _build_feedback_payload(response: Dict[str, Any]) -> Dict[str, Any]:
     """Build a compact payload for feedback storage."""
@@ -152,12 +153,11 @@ async def on_message(message: cl.Message):
             pdf_buffer = generate_pdf(tool_result, message.content)
             pdf_bytes = pdf_buffer.getvalue() 
             filename = build_report_filename( tool_result.get("refined_user_question", message.content) ) 
-            elements.append( 
-                cl.File( 
-                    name=filename, 
-                    content=pdf_bytes, 
-                ) 
-            ) 
+            report_file = cl.File( 
+                name=filename, 
+                content=pdf_bytes, 
+            )
+            elements.append(report_file)
 
         await cl.Message( 
             content=final_response, 
