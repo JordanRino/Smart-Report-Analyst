@@ -10,21 +10,6 @@ from chainlit.data import BaseDataLayer
 from typing import Any, Dict, Optional, List
 
 
-# Minimal replacements for Chainlit types
-class ThreadDict:
-    def __init__(self, id: str, user_id: str, name: Optional[str] = None, metadata: Optional[Dict] = None):
-        self.id = id
-        self.user_id = user_id
-        self.name = name
-        self.metadata = metadata
-
-class ElementDict:
-    def __init__(self, thread_id: str, role: str, content: str, metadata: Optional[Dict] = None):
-        self.thread_id = thread_id
-        self.role = role
-        self.content = content
-        self.metadata = metadata
-
 class Pagination:
     def __init__(self, limit: int = 10, offset: int = 0):
         self.limit = limit
@@ -83,7 +68,13 @@ class MySQLDataLayer(BaseDataLayer):
                 await cur.execute("SELECT * FROM users WHERE id=%s", (identifier,))
                 row = await cur.fetchone()
                 if row:
-                    return User(identifier=str(row["id"]), metadata={"username": row["username"], "role": row["role"]})
+                    return User(
+                        identifier=str(row["id"]), 
+                        metadata={
+                            "username": row["username"], 
+                            "role": row["role"]
+                        }
+                    )
         return None
 
     async def create_user(self, user: User) -> User:
@@ -102,21 +93,46 @@ class MySQLDataLayer(BaseDataLayer):
                 return user
 
     # ----------------- Thread Methods -----------------
-    async def list_threads(self, pagination: Pagination, filters: ThreadFilter) -> PaginatedResponse[ThreadDict]:
+    async def list_threads(self, pagination: Pagination, filters: ThreadFilter) -> PaginatedResponse:
         await self.init_pool()
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
-                sql = "SELECT * FROM chat_sessions WHERE user_id=%s ORDER BY updated_at DESC LIMIT %s OFFSET %s"
+                sql = """
+                SELECT * FROM chat_sessions
+                WHERE user_id=%s
+                ORDER BY updated_at DESC
+                LIMIT %s OFFSET %s
+                """
                 await cur.execute(sql, (filters.user_id, pagination.limit, pagination.offset))
                 rows = await cur.fetchall()
-                threads = [
-                    ThreadDict(id=str(r["id"]), user_id=str(r["user_id"]), name=r.get("name"), metadata=r.get("metadata"))
-                    for r in rows
-                ]
+
+                threads = []
+                for r in rows:
+                    metadata = r.get("metadata")
+
+                    if isinstance(metadata, str):
+                        try:
+                            metadata = json.loads(metadata)
+                        except:
+                            metadata = None
+
+                    threads.append({
+                        "id": str(r["id"]),
+                        "name": r.get("name"),
+                        "userId": str(r["user_id"]),
+                        "metadata": metadata,
+                        "createdAt": r["created_at"],
+                        "updatedAt": r["updated_at"],
+                    })
+
                 return PaginatedResponse(items=threads, total=len(threads))
 
-    async def create_thread(self, user_id: str, name: Optional[str] = None, metadata: Optional[Dict] = None) -> ThreadDict:
+    async def create_thread(self, user_id: str, name: Optional[str] = None, metadata: Optional[Dict] = None) -> Dict[str, Any]:
         await self.init_pool()
+
+        if metadata and isinstance(metadata, dict):
+            metadata = json.dumps(metadata)
+
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -124,7 +140,89 @@ class MySQLDataLayer(BaseDataLayer):
                     (user_id, name, metadata),
                 )
                 thread_id = cur.lastrowid
-                return ThreadDict(id=str(thread_id), user_id=user_id, name=name, metadata=metadata)
+                await cur.execute("SELECT created_at, updated_at FROM chat_sessions WHERE id=%s", (thread_id,))
+                row = await cur.fetchone()
+                return {
+                    "id": str(thread_id),
+                    "name": name,
+                    "userId": str(user_id),
+                    "metadata": metadata,
+                    "createdAt": row["created_at"],
+                    "updatedAt": row["updated_at"],
+                }
+    
+    async def get_thread(self, thread_id: str) -> Dict[str, Any]:
+        await self.init_pool()
+        async with self.pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute("SELECT * FROM chat_sessions WHERE id=%s", (thread_id,))
+                row = await cur.fetchone()
+                if not row:
+                    return None
+
+                metadata = row.get("metadata")
+                if isinstance(metadata, str):
+                    try:
+                        metadata = json.loads(metadata)
+                    except:
+                        metadata = None
+
+                return {
+                    "id": str(row["id"]),
+                    "name": row.get("name"),
+                    "userId": str(row["user_id"]),
+                    "metadata": metadata,
+                    "createdAt": row["created_at"],
+                    "updatedAt": row["updated_at"],
+                }
+            
+    async def get_thread_author(self, thread_id: str) -> Optional[User]:
+        await self.init_pool()
+        async with self.pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    """
+                    SELECT u.* FROM users u
+                    JOIN chat_sessions cs ON cs.user_id = u.id
+                    WHERE cs.id=%s
+                    """,
+                    (thread_id,)
+                )
+                row = await cur.fetchone()
+
+                if not row:
+                    return None
+
+                return User(
+                    identifier=str(row["id"]),
+                    metadata={"username": row["username"], "role": row["role"]}
+                )
+
+    async def update_thread(self, thread: Dict[str, Any]) -> Dict[str, Any]:
+        await self.init_pool()
+
+        metadata = thread["metadata"]
+        if isinstance(metadata, dict):
+            metadata = json.dumps(metadata)
+
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE chat_sessions
+                    SET name=%s, metadata=%s, updated_at=NOW()
+                    WHERE id=%s
+                    """,
+                    (thread["name"], metadata, thread["id"]),
+                )
+        return thread
+
+    async def delete_thread(self, thread_id: str) -> None:
+        await self.init_pool()
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM chat_messages WHERE session_id=%s", (thread_id,))
+                await cur.execute("DELETE FROM chat_sessions WHERE id=%s", (thread_id,))
     
     # ----------------- Messages -----------------
     async def get_messages(self, session_id: str) -> list[Dict[str, Any]]:
@@ -135,27 +233,24 @@ class MySQLDataLayer(BaseDataLayer):
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
-                    "SELECT role, content, tool_result, created_at FROM chat_messages WHERE session_id=%s ORDER BY created_at ASC",
+                    """
+                    SELECT role, content, tool_result, created_at
+                    FROM chat_messages
+                    WHERE session_id=%s
+                    ORDER BY created_at ASC
+                    """,
                     (session_id,)
                 )
                 rows = await cur.fetchall()
-                # tool_result is JSON stored as string, parse it
+
                 for r in rows:
                     if r.get("tool_result"):
-                        r["tool_result"] = json.loads(r["tool_result"])
+                        try:
+                            r["tool_result"] = json.loads(r["tool_result"])
+                        except:
+                            pass
+
                 return rows
-
-    async def get_thread(self, thread_id: str) -> ThreadDict:
-        raise NotImplementedError
-
-    async def get_thread_author(self, thread_id: str) -> Optional[User]:
-        raise NotImplementedError
-
-    async def update_thread(self, thread: ThreadDict) -> ThreadDict:
-        raise NotImplementedError
-
-    async def delete_thread(self, thread_id: str) -> None:
-        raise NotImplementedError
 
     # ----------------- Step Methods -----------------
     async def create_step(self, *args, **kwargs):
@@ -178,25 +273,34 @@ class MySQLDataLayer(BaseDataLayer):
         raise NotImplementedError
 
     # ----------------- Element Methods -----------------
-    async def create_element(self, element_dict: ElementDict):
+    async def create_element(self, element_dict: Dict[str, Any]) -> str:
         await self.init_pool()
-        if isinstance(element_dict.metadata, dict):
-            element_dict.metadata = json.dumps(element_dict.metadata)
+
+        metadata = element_dict.get("metadata")
+        if isinstance(metadata, dict):
+            element_dict["metadata"] = json.dumps(metadata)
+
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "INSERT INTO chat_messages (session_id, role, content, tool_result) VALUES (%s, %s, %s, %s)",
+                    """
+                    INSERT INTO chat_messages (session_id, role, content, tool_result)
+                    VALUES (%s, %s, %s, %s)
+                    """,
                     (
-                        element_dict.thread_id,
-                        element_dict.role,
-                        element_dict.content,
-                        element_dict.metadata or None,
+                        element_dict["thread_id"],
+                        element_dict["role"],
+                        element_dict["content"],
+                        element_dict.get("metadata") or None,
                     ),
                 )
+
+                # Update last activity
                 await cur.execute(
                     "UPDATE chat_sessions SET updated_at=NOW() WHERE id=%s",
-                    (element_dict.thread_id,)
+                    (element_dict["thread_id"],)
                 )
+
                 return str(cur.lastrowid)
 
     async def get_element(self, element_id: str):

@@ -17,19 +17,11 @@ from smart_report_analyst.ui.chainlit.utils.formatting import (
     should_generate_report,
 )
 from smart_report_analyst.service.persistence.mysql.data_layer import MySQLDataLayer
-from smart_report_analyst.service.persistence.mysql.data_layer import ElementDict
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 bedrock_manager = BedrockManager()
-data_layer = MySQLDataLayer(
-    host=settings.MYSQL_HOST,
-    user=settings.MYSQL_USER,
-    password=settings.MYSQL_PASSWORD,
-    db=settings.MYSQL_DB,
-    port=settings.MYSQL_PORT,
-)
-
+data_layer: MySQLDataLayer = cl.data_layer
 
 def _build_feedback_payload(response: Dict[str, Any]) -> Dict[str, Any]:
     """Build a compact payload for feedback storage."""
@@ -81,14 +73,12 @@ async def on_message(message: cl.Message):
 
     # Persist user message
     try:
-        await data_layer.create_element(
-            ElementDict(
-                thread_id=thread_id,
-                role="user",
-                content=message.content,
-                metadata=None
-            )
-        )
+        await data_layer.create_element({
+            "thread_id": thread_id,
+            "role": "user",
+            "content": message.content,
+            "metadata": None
+        })
 
     except Exception:
         logger.exception("Failed to save user message")
@@ -140,14 +130,12 @@ async def on_message(message: cl.Message):
 
             # Persist assistant message
             try:
-                await data_layer.create_element(
-                    ElementDict(
-                        thread_id=thread_id,
-                        role="assistant",
-                        content=full_response,
-                        metadata=tool_result or None,
-                    )
-                )
+                await data_layer.create_element({
+                    "thread_id": thread_id,
+                    "role": "assistant",
+                    "content": full_response,
+                    "metadata": tool_result or None
+                })
             except Exception:
                 logger.exception("Failed to save assistant message")
 
