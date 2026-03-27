@@ -10,27 +10,6 @@ from chainlit.data import BaseDataLayer
 from typing import Any, Dict, Optional, List
 
 
-class Pagination:
-    def __init__(self, limit: int = 10, offset: int = 0):
-        self.limit = limit
-        self.offset = offset
-
-class ThreadFilter:
-    def __init__(self, user_id: str):
-        self.user_id = user_id
-
-class PaginatedResponse:
-    def __init__(self, items: List[Any], total: int):
-        self.items = items
-        self.total = total
-
-# If you need User, use cl.user_session instead of importing User from Chainlit
-class User:
-    def __init__(self, identifier: str, metadata: Dict[str, Any]):
-        self.identifier = identifier
-        self.metadata = metadata
-
-
 class MySQLDataLayer(BaseDataLayer):
     def __init__(self, host, user, password, db, port=3306):
         self.pool = None
@@ -61,39 +40,41 @@ class MySQLDataLayer(BaseDataLayer):
         return f"Debug URL for thread {thread_id}"
 
     # ----------------- User Methods -----------------
-    async def get_user(self, identifier: str) -> Optional[User]:
+    async def get_user(self, identifier: str) -> Optional[Dict[str, Any]]:
         await self.init_pool()
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute("SELECT * FROM users WHERE id=%s", (identifier,))
                 row = await cur.fetchone()
                 if row:
-                    return User(
-                        identifier=str(row["id"]), 
-                        metadata={
-                            "username": row["username"], 
-                            "role": row["role"]
-                        }
-                    )
+                    return {
+                        "id": str(row["id"]),
+                        "username": row["username"],
+                        "role": row["role"]
+                    }   
         return None
 
-    async def create_user(self, user: User) -> User:
+    async def create_user(self, user: Dict[str, Any]) -> Dict[str, Any]:
         await self.init_pool()
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)",
                     (
-                        user.metadata["username"],
-                        user.metadata.get("password_hash", ""),
-                        user.metadata.get("role", "user"),
+                        user["username"],
+                        user.get("password_hash", ""),
+                        user.get("role", "user"),
                     ),
                 )
-                user.identifier = str(cur.lastrowid)
-                return user
+                user_id = str(cur.lastrowid)
+                return {
+                    "id": user_id,
+                    "username": user["username"],
+                    "role": user.get("role", "user"),
+                }
 
     # ----------------- Thread Methods -----------------
-    async def list_threads(self, pagination: Pagination, filters: ThreadFilter) -> PaginatedResponse:
+    async def list_threads(self, pagination: Dict, filters: Dict) -> Dict[str, Any]:
         await self.init_pool()
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -103,7 +84,7 @@ class MySQLDataLayer(BaseDataLayer):
                 ORDER BY updated_at DESC
                 LIMIT %s OFFSET %s
                 """
-                await cur.execute(sql, (filters.user_id, pagination.limit, pagination.offset))
+                await cur.execute(sql, (filters["user_id"], pagination["limit"], pagination["offset"]))
                 rows = await cur.fetchall()
 
                 threads = []
@@ -125,7 +106,7 @@ class MySQLDataLayer(BaseDataLayer):
                         "updatedAt": r["updated_at"],
                     })
 
-                return PaginatedResponse(items=threads, total=len(threads))
+                return {"items": threads, "total": len(threads)}
 
     async def create_thread(self, user_id: str, name: Optional[str] = None, metadata: Optional[Dict] = None) -> Dict[str, Any]:
         await self.init_pool()
@@ -151,7 +132,7 @@ class MySQLDataLayer(BaseDataLayer):
                     "updatedAt": row["updated_at"],
                 }
     
-    async def get_thread(self, thread_id: str) -> Dict[str, Any]:
+    async def get_thread(self, thread_id: str) -> Optional[Dict[str, Any]]:
         await self.init_pool()
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -176,27 +157,30 @@ class MySQLDataLayer(BaseDataLayer):
                     "updatedAt": row["updated_at"],
                 }
             
-    async def get_thread_author(self, thread_id: str) -> Optional[User]:
+    async def get_thread_author(self, thread_id: str) -> Optional[Dict[str, Any]]:
         await self.init_pool()
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
                     """
-                    SELECT u.* FROM users u
+                    SELECT u.id, u.username, u.role
+                    FROM users u
                     JOIN chat_sessions cs ON cs.user_id = u.id
-                    WHERE cs.id=%s
+                    WHERE cs.id = %s
                     """,
                     (thread_id,)
                 )
                 row = await cur.fetchone()
-
                 if not row:
                     return None
 
-                return User(
-                    identifier=str(row["id"]),
-                    metadata={"username": row["username"], "role": row["role"]}
-                )
+                return {
+                    "id": str(row["id"]),
+                    "metadata": {
+                        "username": row["username"],
+                        "role": row["role"]
+                    }
+                }
 
     async def update_thread(self, thread: Dict[str, Any]) -> Dict[str, Any]:
         await self.init_pool()

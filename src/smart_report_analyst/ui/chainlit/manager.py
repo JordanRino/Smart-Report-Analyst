@@ -9,7 +9,6 @@ from smart_report_analyst.ui.chainlit.handlers import chat  # noqa
 from smart_report_analyst.ui.chainlit.handlers import feedback  # noqa
 from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.persistence.mysql.data_layer import MySQLDataLayer
-from smart_report_analyst.service.persistence.mysql.data_layer import Pagination, ThreadFilter
 
 settings = Settings()
 
