@@ -185,7 +185,7 @@ class MySQLDataLayer(BaseDataLayer):
                 return {
                     "id": str(thread_id),
                     "name": name,
-                    "userId": str(user_id),
+                    "userIdentifier": str(user_id),
                     "metadata": metadata,
                     "createdAt": row["created_at"],
                     "updatedAt": row["updated_at"],
