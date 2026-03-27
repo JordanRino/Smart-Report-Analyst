@@ -7,9 +7,11 @@ import json
 
 from typing import Optional, Dict, Any
 from chainlit.data import BaseDataLayer
+from chainlit.user import PersistedUser, User
 from typing import Any, Dict, Optional, List
 
 from smart_report_analyst.service.persistence.mysql.utils import load_json, dump_json
+
 
 class MySQLDataLayer(BaseDataLayer):
     def __init__(self, host, user, password, db, port=3306):
@@ -57,13 +59,13 @@ class MySQLDataLayer(BaseDataLayer):
                 row = await cur.fetchone()
                 if row:
                     metadata = load_json(row.get("metadata")) or {}
-                    return {
-                        "id": str(row["id"]),
-                        "identifier": row["identifier"],
-                        "metadata": metadata,
-                        "createdAt": row["created_at"],
-                        "updatedAt": row["updated_at"],
-                    }
+                    return User(
+                        id=str(row["id"]),
+                        identifier=row["identifier"],
+                        metadata=metadata,
+                        createdAt=row["created_at"],
+                        updatedAt=row["updated_at"],
+                    )
         return None
 
     async def create_user(self, user: Dict[str, Any]) -> Dict[str, Any]:
@@ -102,13 +104,13 @@ class MySQLDataLayer(BaseDataLayer):
                     raise RuntimeError("User insert succeeded but row could not be reloaded")
 
                 metadata = load_json(row.get("metadata")) or {}
-                return {
-                    "id": str(row["id"]),
-                    "identifier": row["identifier"],
-                    "metadata": metadata,
-                    "createdAt": row["created_at"],
-                    "updatedAt": row["updated_at"],
-                }
+                return User(
+                    id=str(row["id"]),
+                    identifier=row["identifier"],
+                    metadata=metadata,
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"]
+                )
 
     # ----------------- Thread Methods -----------------
     async def list_threads(self, pagination: Dict, filters: Dict) -> Dict[str, Any]:
