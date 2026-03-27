@@ -59,12 +59,11 @@ class MySQLDataLayer(BaseDataLayer):
                 row = await cur.fetchone()
                 if row:
                     metadata = load_json(row.get("metadata")) or {}
-                    return User(
+                    return PersistedUser(
                         id=str(row["id"]),
                         identifier=row["identifier"],
                         metadata=metadata,
-                        createdAt=row["created_at"],
-                        updatedAt=row["updated_at"],
+                        createdAt=row["created_at"].isoformat() if hasattr(row["created_at"], 'isoformat') else str(row["created_at"])
                     )
         return None
 
@@ -103,13 +102,11 @@ class MySQLDataLayer(BaseDataLayer):
                 if not row:
                     raise RuntimeError("User insert succeeded but row could not be reloaded")
 
-                metadata = load_json(row.get("metadata")) or {}
-                return User(
+                return PersistedUser(
                     id=str(row["id"]),
                     identifier=row["identifier"],
-                    metadata=metadata,
-                    created_at=row["created_at"],
-                    updated_at=row["updated_at"]
+                    metadata=load_json(row["metadata"]) or {},
+                    createdAt=row["created_at"].isoformat() if hasattr(row["created_at"], 'isoformat') else str(row["created_at"])
                 )
 
     # ----------------- Thread Methods -----------------
@@ -215,13 +212,11 @@ class MySQLDataLayer(BaseDataLayer):
                 if not row:
                     return None
 
-                metadata = load_json(row.get("metadata")) or {}
-                return User(
+                return PersistedUser(
                     id=str(row["id"]),
                     identifier=row["identifier"],
-                    metadata=metadata,
-                    created_at=row["created_at"],
-                    updated_at=row["updated_at"]
+                    metadata=load_json(row.get("metadata")) or {},
+                    createdAt=row["created_at"].isoformat() if hasattr(row["created_at"], 'isoformat') else str(row["created_at"])
                 )
 
     async def update_thread(self, thread: Dict[str, Any]) -> Dict[str, Any]:
@@ -283,14 +278,13 @@ class MySQLDataLayer(BaseDataLayer):
 
     # ----------------- Step Methods -----------------
     async def create_step(self, *args, **kwargs):
-        raise NotImplementedError
+        pass
 
     async def update_step(self, *args, **kwargs):
-        raise NotImplementedError
+        pass
 
     async def delete_step(self, *args, **kwargs):
-        raise NotImplementedError
-
+        pass
     async def get_favorite_steps(self, *args, **kwargs):
         raise NotImplementedError
 
