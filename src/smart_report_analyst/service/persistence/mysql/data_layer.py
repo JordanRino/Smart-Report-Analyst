@@ -8,9 +8,11 @@ import json
 from typing import Optional, Dict, Any
 from chainlit.data import BaseDataLayer
 from chainlit.user import PersistedUser, User
+from chainlit.types import PaginatedResponse, PageInfo
 from typing import Any, Dict, Optional, List
 
 from smart_report_analyst.service.persistence.mysql.utils import load_json, dump_json
+
 
 
 class MySQLDataLayer(BaseDataLayer):
@@ -128,6 +130,8 @@ class MySQLDataLayer(BaseDataLayer):
                 """
                 await cur.execute(sql, (user_id, int(limit), int(offset)))
                 rows = await cur.fetchall()
+                # check if there's a next page
+                has_next_page = len(rows) > limit
 
                 threads = []
                 for r in rows:
@@ -148,7 +152,16 @@ class MySQLDataLayer(BaseDataLayer):
                         "updatedAt": r["updated_at"].isoformat() if hasattr(r["updated_at"], 'isoformat') else str(r["updated_at"]),
                     })
 
-                return {"items": threads}
+                page_info = PageInfo(
+                    hasNextPage=has_next_page,
+                    startCursor=str(offset),
+                    endCursor=str(offset + len(threads))
+                )
+
+                return PaginatedResponse(
+                    data=threads,
+                    pageInfo=page_info
+                )
 
     async def create_thread(self, user_id: str, name: Optional[str] = None, metadata: Optional[Dict] = None) -> Dict[str, Any]:
         await self.init_pool()
