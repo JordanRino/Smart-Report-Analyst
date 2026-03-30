@@ -17,12 +17,11 @@ from smart_report_analyst.ui.chainlit.utils.formatting import (
     build_report_filename,
     should_generate_report,
 )
-from smart_report_analyst.service.persistence.mysql.data_layer import MySQLDataLayer
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 bedrock_manager = BedrockManager()
-data_layer = get_data_layer()
+
 
 def _build_feedback_payload(response: Dict[str, Any]) -> Dict[str, Any]:
     """Build a compact payload for feedback storage."""
@@ -56,6 +55,7 @@ def _build_actions(response: Dict[str, Any]) -> List[cl.Action]:
 async def on_message(message: cl.Message):
     thread_id = cl.user_session.get("thread_id")
     bedrock_session_id = cl.user_session.get("bedrock_session_id")
+    data_layer = get_data_layer()
 
     if not thread_id:
         await cl.Message(content="No active session. Please select or create one.").send()
