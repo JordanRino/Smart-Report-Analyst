@@ -12,7 +12,7 @@ from chainlit.data import get_data_layer
 
 from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.bedrock.manager import BedrockManager
-from smart_report_analyst.service.conversation.backend import async_stream_strands_turn, get_agent_backend_kind
+# from smart_report_analyst.service.conversation.backend import async_stream_strands_turn, get_agent_backend_kind
 from smart_report_analyst.service.report_generation import generate_pdf
 from smart_report_analyst.ui.chainlit.utils.formatting import (
     build_report_filename,
@@ -104,27 +104,27 @@ async def on_message(message: cl.Message):
         #     agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
         #     session_id=session_id,
         # )
-        if get_agent_backend_kind(settings) == "strands":
-            async for event in async_stream_strands_turn(settings, history):
-                if event["type"] == "chunk":
-                    token = event["data"]
-                    full_response += token
-                elif event["type"] == "tool_result":
-                    tool_result = event["data"]
-        else:
-            stream = bedrock_manager.invoke_agent_stream(
-                prompt=message.content,
-                agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
-                agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
-                session_id=bedrock_session_id,
-            )
-            for event in stream:
-                if event["type"] == "chunk":
-                    token = event["data"]
-                    full_response += token
+        # if get_agent_backend_kind(settings) == "strands":
+        #     async for event in async_stream_strands_turn(settings, history):
+        #         if event["type"] == "chunk":
+        #             token = event["data"]
+        #             full_response += token
+        #         elif event["type"] == "tool_result":
+        #             tool_result = event["data"]
+        # else:
+        stream = bedrock_manager.invoke_agent_stream(
+            prompt=message.content,
+            agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
+            agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
+            session_id=bedrock_session_id,
+        )
+        for event in stream:
+            if event["type"] == "chunk":
+                token = event["data"]
+                full_response += token
 
-                elif event["type"] == "tool_result":
-                    tool_result = event["data"]
+            elif event["type"] == "tool_result":
+                tool_result = event["data"]
 
         history = cl.user_session.get("chat_history", [])
 
