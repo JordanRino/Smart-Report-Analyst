@@ -165,31 +165,35 @@ class MySQLDataLayer(BaseDataLayer):
                     pageInfo=page_info
                 )
 
-    async def create_thread(self, user_id: str, name: Optional[str] = None, metadata: Optional[Dict] = None) -> Dict[str, Any]:
-        await self.init_pool()
+    # In data_layer.py
 
-        if metadata and isinstance(metadata, dict):
-            metadata = json.dumps(metadata)
-        elif not metadata:
-            metadata = None
+    async def create_thread(self, thread_dict: Dict) -> Dict:
+        """This is the signature Chainlit expects."""
+        await self.init_pool()
+        
+        # Chainlit provides the UUID here!
+        thread_id = thread_dict.get("id") 
+        user_id = thread_dict.get("userId") or 1
+        name = thread_dict.get("name") or "New Chat"
+        metadata = json.dumps(thread_dict.get("metadata")) if thread_dict.get("metadata") else None
 
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
-                    "INSERT INTO chat_sessions (user_id, name, metadata) VALUES (%s, %s, %s)",
-                    (user_id, name, metadata),
+                    """
+                    INSERT INTO chat_sessions (id, user_id, name, metadata) 
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE name = VALUES(name)
+                    """,
+                    (thread_id, user_id, name, metadata),
                 )
-                thread_id = cur.lastrowid
-                await cur.execute("SELECT created_at, updated_at FROM chat_sessions WHERE id=%s", (thread_id,))
+                # Fetch timestamps to return to Chainlit
+                await cur.execute("SELECT created_at FROM chat_sessions WHERE id=%s", (thread_id,))
                 row = await cur.fetchone()
-                return {
-                    "id": str(thread_id),
-                    "name": name,
-                    "userIdentifier": str(user_id),
-                    "metadata": metadata,
-                    "createdAt": row["created_at"],
-                    "updatedAt": row["updated_at"],
-                }
+                
+        # Return the dict Chainlit expects
+        thread_dict["createdAt"] = row["created_at"]
+        return thread_dict
     
     async def get_thread(self, thread_id: str) -> Optional[Dict[str, Any]]:
         await self.init_pool()
