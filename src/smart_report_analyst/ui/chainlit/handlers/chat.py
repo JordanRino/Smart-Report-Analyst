@@ -152,7 +152,9 @@ async def on_message(message: cl.Message):
             )
             elements.append(report_file)
 
-        await cl.Message(
+        await cl.Message( 
+            content="I have generated a report for the records collected from executing the SQL", 
+            # actions=_build_actions(response),
             actions=_build_actions({
                 "final_response": full_response,
                 "tool_result": tool_result,
