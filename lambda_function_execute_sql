@@ -1,15 +1,16 @@
-link - https://github.com/PyMySQL/PyMySQL
+# link - https://github.com/PyMySQL/PyMySQL
 
 
-Service:        bedrock.amazonaws.com
-Statement ID:   AllowBedrockAgentInvokeLambda
-Principal:      bedrock.amazonaws.com
-Source ARN:     arn:aws:bedrock:us-east-1:YOUR_ACCOUNT_ID:agent/YOUR_AGENT_ID
-Action:         lambda:InvokeFunction
+# Service:        bedrock.amazonaws.com
+# Statement ID:   AllowBedrockAgentInvokeLambda
+# Principal:      bedrock.amazonaws.com
+# Source ARN:     arn:aws:bedrock:us-east-1:YOUR_ACCOUNT_ID:agent/YOUR_AGENT_ID
+# Action:         lambda:InvokeFunction
 
-import pymysql
 import json
 import os
+
+import pymysql
 
 DB_HOST = os.environ.get("DB_HOST")
 DB_USER = os.environ.get("DB_USER")
@@ -35,7 +36,7 @@ def connect_rds():
             user=DB_USER,
             password=DB_PASSWORD,
             database=DB_NAME,
-            cursorclass=pymysql.cursors.DictCursor
+            cursorclass=pymysql.cursors.DictCursor,
         )
         return rds_connection
     except Exception as e:
@@ -91,29 +92,29 @@ def lambda_handler(event, context):
         # Prepare response for Bedrock
         response_body = {
             "TEXT": {
-                "body": json.dumps({
-                    "refined_user_question": refined_user_question,
-                    "executed_sql": sql,
-                    "results": result,
-                    "to_store": to_store,
-                    "row_count": len(result)
-                })
+                "body": json.dumps(
+                    {
+                        "refined_user_question": refined_user_question,
+                        "executed_sql": sql,
+                        "results": result,
+                        "to_store": to_store,
+                        "row_count": len(result),
+                    }
+                )
             }
         }
 
         function_response = {
             "actionGroup": actionGroup,
             "function": function,
-            "functionResponse": {
-                "responseBody": response_body
-            }
+            "functionResponse": {"responseBody": response_body},
         }
 
         return {
             "messageVersion": "1.0",
             "response": function_response,
             "sessionAttributes": session_attributes,
-            "promptSessionAttributes": prompt_session_attributes
+            "promptSessionAttributes": prompt_session_attributes,
         }
 
     except Exception as e:
@@ -121,12 +122,14 @@ def lambda_handler(event, context):
 
         response_body = {
             "TEXT": {
-                "body": json.dumps({
-                    "refined_user_question": refined_user_question,
-                    "to_store": false,
-                    "error": str(e),
-                    "query_attempted": sql
-                })
+                "body": json.dumps(
+                    {
+                        "refined_user_question": refined_user_question,
+                        "to_store": False,
+                        "error": str(e),
+                        "query_attempted": sql,
+                    }
+                )
             }
         }
 
@@ -135,15 +138,13 @@ def lambda_handler(event, context):
             "function": function,
             "functionResponse": {
                 "responseState": "REPROMPT",
-                "responseBody": response_body
-            }
+                "responseBody": response_body,
+            },
         }
 
         return {
             "messageVersion": "1.0",
             "response": function_response,
             "sessionAttributes": session_attributes,
-            "promptSessionAttributes": prompt_session_attributes
+            "promptSessionAttributes": prompt_session_attributes,
         }
-
-

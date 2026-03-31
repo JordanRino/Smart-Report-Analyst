@@ -1,0 +1,132 @@
+"""
+Lambda for Strands / direct InvokeFunction.
+
+Event (JSON object):
+  query                 - SQL to run (required)
+  user_refined_question - string (optional but recommended)
+  to_store              - bool (optional, default True)
+
+Returns JSON object (success or error shape above).
+Reuses same RDS env vars as the Bedrock action-group Lambda.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from datetime import date, datetime
+from decimal import Decimal
+
+import pymysql
+
+DB_HOST = os.environ.get("DB_HOST")
+DB_USER = os.environ.get("DB_USER")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
+DB_NAME = os.environ.get("DB_NAME")
+
+_rds_connection = None
+
+
+def _parse_bool(value, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if s in ("true", "1", "yes"):
+        return True
+    if s in ("false", "0", "no"):
+        return False
+    return default
+
+
+def _json_safe_row(row: dict) -> dict:
+    """Make row JSON-serializable for Lambda's return serializer."""
+    out = {}
+    for k, v in row.items():
+        if isinstance(v, Decimal):
+            out[k] = float(v) if v == v.to_integral_value() else float(v)
+        elif isinstance(v, (datetime, date)):
+            out[k] = v.isoformat()
+        elif isinstance(v, (bytes, bytearray)):
+            out[k] = v.decode("utf-8", errors="replace")
+        else:
+            out[k] = v
+    return out
+
+
+def _connect():
+    global _rds_connection
+    try:
+        if _rds_connection:
+            _rds_connection.ping(reconnect=True)
+            return _rds_connection
+    except Exception:
+        _rds_connection = None
+
+    _rds_connection = pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+    return _rds_connection
+
+
+def lambda_handler(event, context):
+    # Direct invoke: event is already a dict
+    if not isinstance(event, dict):
+        return {
+            "error": True,
+            "message": "Event must be a JSON object",
+            "refined_user_question": None,
+            "executed_sql": None,
+            "results": [],
+            "row_count": 0,
+            "to_store": False,
+        }
+
+    sql = event.get("query")
+    user_refined = event.get("user_refined_question")
+    to_store = _parse_bool(event.get("to_store"), default=True)
+
+    if not sql or not str(sql).strip():
+        return {
+            "error": True,
+            "message": "Missing or empty 'query'",
+            "refined_user_question": user_refined,
+            "executed_sql": None,
+            "results": [],
+            "row_count": 0,
+            "to_store": False,
+        }
+
+    sql = str(sql).strip()
+
+    try:
+        conn = _connect()
+        with conn.cursor() as cursor:
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+
+        safe = [_json_safe_row(dict(r)) for r in rows]
+        return {
+            "refined_user_question": user_refined,
+            "executed_sql": sql,
+            "results": safe,
+            "row_count": len(safe),
+            "to_store": to_store,
+        }
+
+    except Exception as e:
+        print(f"Strands SQL Lambda error: {e!r}")
+        return {
+            "error": True,
+            "message": str(e),
+            "refined_user_question": user_refined,
+            "executed_sql": sql,
+            "results": [],
+            "row_count": 0,
+            "to_store": False,
+        }
