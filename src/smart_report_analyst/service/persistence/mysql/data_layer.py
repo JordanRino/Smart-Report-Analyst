@@ -304,32 +304,34 @@ class MySQLDataLayer(BaseDataLayer):
                 return rows
 
     # ----------------- Step Methods -----------------
-    async def create_step(self, step_dict: Dict) -> None:
+    async def create_step(self, step_dict: Dict):
         await self.init_pool()
-
-        # Map Chainlit StepDict to your chat_messages table
-        thread_id = step_dict.get("threadId")
-        msg_id = step_dict.get("id")
-        # Determine role: if it's 'user_message', use 'user', otherwise 'assistant'
-        role = "user" if step_dict.get("type") == "user_message" else "assistant"
-        # Content can be in 'input' (for users) or 'output' (for assistant)
-        content = step_dict.get("output") or step_dict.get("input") or ""
+        
+        session_id = step_dict.get("threadId")
+        step_id = step_dict.get("id")
+        # Mapping Chainlit roles to your DB roles
+        role = step_dict.get("type", "assistant") 
+        content = step_dict.get("output", "")
 
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
+                # SAFETY NET: Ensure the session exists before saving the step
+                await cur.execute(
+                    """
+                    INSERT IGNORE INTO chat_sessions (id, user_id, name)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (session_id, 1, "New Conversation") 
+                )
+
+                # Now save the step
                 await cur.execute(
                     """
                     INSERT INTO chat_messages (id, session_id, role, content)
                     VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE content = VALUES(content)
                     """,
-                    (
-                        msg_id, thread_id, role, content
-                    ),
-                )
-                # Optional: Update the session's 'updated_at' timestamp
-                await cur.execute(
-                    "UPDATE chat_sessions SET updated_at=NOW() WHERE id=%s",
-                    (thread_id,)
+                    (step_id, session_id, role, content)
                 )
 
     async def update_step(self, step_dict: Dict) -> None:
