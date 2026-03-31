@@ -1,0 +1,266 @@
+sudo dnf install mariadb105 -y or sudo dnf install mariadb -y
+
+USE aisa_demo_db;
+
+-- 1. DROP + CREATE TABLE
+DROP TABLE IF EXISTS sba_loans;
+
+CREATE TABLE sba_loans (
+    LoanNr_ChkDgt VARCHAR(20) PRIMARY KEY,
+    Name VARCHAR(255),
+    City VARCHAR(100),
+    State VARCHAR(10),
+    Zip VARCHAR(20),
+    Bank VARCHAR(255),
+    BankState VARCHAR(10),
+    NAICS VARCHAR(20),
+    ApprovalDate VARCHAR(20),
+    ApprovalFY VARCHAR(10),
+    Term INT,
+    NoEmp INT,
+    NewExist INT,
+    CreateJob INT,
+    RetainedJob INT,
+    FranchiseCode VARCHAR(20),
+    UrbanRural INT,
+    RevLineCr VARCHAR(5),
+    LowDoc VARCHAR(5),
+    ChgOffDate VARCHAR(20),
+    DisbursementDate VARCHAR(20),
+    DisbursementGross DECIMAL(15,2),
+    BalanceGross VARCHAR(50),
+    MIS_Status VARCHAR(20),
+    ChgOffPrinciple DECIMAL(15,2),
+    GrApprv DECIMAL(15,2),
+    SBA_Apprv DECIMAL(15,2)
+);
+
+-- 2. INSERT DATA (NO RECURSION → NO LIMIT ISSUES)
+INSERT INTO sba_loans
+SELECT
+    CONCAT('LN', LPAD(t.n, 8, '0')) AS LoanNr_ChkDgt,
+
+    CONCAT(
+        ELT(1+FLOOR(RAND()*6),'Tech','Global','Prime','United','NextGen','Pioneer'),
+        ' ',
+        ELT(1+FLOOR(RAND()*5),'Solutions','Industries','Services','Holdings','Group')
+    ) AS Name,
+
+    ELT(1+FLOOR(RAND()*8),
+        'New York','Los Angeles','Chicago','Houston','Phoenix','Dallas','Atlanta','Seattle'
+    ) AS City,
+
+    ELT(1+FLOOR(RAND()*8),
+        'NY','CA','IL','TX','AZ','TX','GA','WA'
+    ) AS State,
+
+    LPAD(FLOOR(10000 + RAND()*89999), 5, '0') AS Zip,
+
+    ELT(1+FLOOR(RAND()*6),
+        'Bank of America','Wells Fargo','Chase','Citi','PNC','U.S. Bank'
+    ) AS Bank,
+
+    ELT(1+FLOOR(RAND()*6),
+        'NC','CA','NY','TX','PA','MN'
+    ) AS BankState,
+
+    ELT(1+FLOOR(RAND()*6),
+        '541330','722511','621111','236220','448140','811111'
+    ) AS NAICS,
+
+    DATE_FORMAT(DATE_ADD('2018-01-01', INTERVAL FLOOR(RAND()*2000) DAY), '%m-%d-%Y') AS ApprovalDate,
+
+    ELT(1+FLOOR(RAND()*6),'2019','2020','2021','2022','2023','2024') AS ApprovalFY,
+
+    FLOOR(12 + RAND()*300) AS Term,
+
+    FLOOR(1 + RAND()*200) AS NoEmp,
+
+    ELT(1+FLOOR(RAND()*2),1,2) AS NewExist,
+
+    FLOOR(RAND()*50) AS CreateJob,
+    FLOOR(RAND()*100) AS RetainedJob,
+
+    IF(RAND() < 0.2, NULL, LPAD(FLOOR(RAND()*99999),5,'0')) AS FranchiseCode,
+
+    ELT(1+FLOOR(RAND()*2),1,2) AS UrbanRural,
+
+    ELT(1+FLOOR(RAND()*3),'Y','N',NULL) AS RevLineCr,
+
+    ELT(1+FLOOR(RAND()*3),'Y','N',NULL) AS LowDoc,
+
+    NULL AS ChgOffDate,
+
+    DATE_FORMAT(DATE_ADD('2018-01-01', INTERVAL FLOOR(RAND()*2000) DAY), '%m-%d-%Y') AS DisbursementDate,
+
+    ROUND(5000 + RAND()*1000000, 2) AS DisbursementGross,
+
+    CONCAT('$', ROUND(RAND()*500000, 2)) AS BalanceGross,
+
+    ELT(1+FLOOR(RAND()*2),'P I F','CHGOFF') AS MIS_Status,
+
+    ROUND(RAND()*300000, 2) AS ChgOffPrinciple,
+
+    ROUND(10000 + RAND()*1000000, 2) AS GrApprv,
+
+    ROUND(5000 + RAND()*800000, 2) AS SBA_Apprv
+
+FROM (
+    SELECT a.N + b.N * 10 + c.N * 100 + d.N * 1000 + 1 AS n
+    FROM 
+        (SELECT 0 N UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 
+         UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) a,
+        (SELECT 0 N UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 
+         UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) b,
+        (SELECT 0 N UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 
+         UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) c,
+        (SELECT 0 N UNION ALL SELECT 1) d
+) t
+WHERE t.n <= 1500;
+
+-- 3. UPDATE CHGOFF DATES
+UPDATE sba_loans
+SET ChgOffDate = DATE_FORMAT(
+    DATE_ADD(STR_TO_DATE(ApprovalDate, '%m-%d-%Y'), INTERVAL FLOOR(200 + RAND()*1000) DAY),
+    '%m-%d-%Y'
+)
+WHERE MIS_Status = 'CHGOFF';
+
+-- 4. VALIDATION
+SELECT COUNT(*) AS total_rows FROM sba_loans;
+
+SELECT MIS_Status, COUNT(*) 
+FROM sba_loans 
+GROUP BY MIS_Status;
+
+SELECT Bank, COUNT(*) 
+FROM sba_loans 
+GROUP BY Bank 
+ORDER BY COUNT(*) DESC;
+
+
+
+
+
+CREATE OR REPLACE VIEW sba_demo_metadata AS
+SELECT
+    ROW_NUMBER() OVER (ORDER BY TABLE_NAME, COLUMN_NAME) AS Id,  -- integer ID for Kendra
+    TABLE_NAME AS TableName,
+    COLUMN_NAME AS ColumnName,
+    DATA_TYPE AS DataType,
+    CASE COLUMN_NAME
+        WHEN 'LoanNr_ChkDgt' THEN 'Unique identifier for each SBA loan.'
+        WHEN 'Name' THEN 'Name of the business that received the SBA loan.'
+        WHEN 'City' THEN 'City where the business is located.'
+        WHEN 'State' THEN 'State where the business operates.'
+        WHEN 'Zip' THEN 'ZIP code of the business.'
+        WHEN 'Bank' THEN 'Bank that issued the SBA loan.'
+        WHEN 'BankState' THEN 'State where the bank branch is located.'
+        WHEN 'NAICS' THEN 'Industry classification code representing the business industry.'
+        WHEN 'ApprovalDate' THEN 'Date when the SBA loan was approved.'
+        WHEN 'ApprovalFY' THEN 'Fiscal year when the loan was approved.'
+        WHEN 'Term' THEN 'Loan term length in months.'
+        WHEN 'NoEmp' THEN 'Number of employees working at the business.'
+        WHEN 'NewExist' THEN 'Indicator showing whether the business is new or existing.'
+        WHEN 'CreateJob' THEN 'Number of jobs expected to be created due to the loan.'
+        WHEN 'RetainedJob' THEN 'Number of jobs expected to be retained due to the loan.'
+        WHEN 'FranchiseCode' THEN 'Code identifying whether the business is a franchise.'
+        WHEN 'UrbanRural' THEN 'Indicator showing whether the business is located in an urban or rural area.'
+        WHEN 'RevLineCr' THEN 'Indicator showing whether the loan is a revolving line of credit.'
+        WHEN 'LowDoc' THEN 'Indicator showing whether the loan was issued through the SBA LowDoc program.'
+        WHEN 'ChgOffDate' THEN 'Date when the loan was charged off due to default.'
+        WHEN 'DisbursementDate' THEN 'Date when the loan funds were disbursed to the borrower.'
+        WHEN 'DisbursementGross' THEN 'Total amount of the loan disbursed to the borrower.'
+        WHEN 'BalanceGross' THEN 'Remaining balance of the loan.'
+        WHEN 'MIS_Status' THEN 'Loan status such as Paid in Full or Charged Off.'
+        WHEN 'ChgOffPrinciple' THEN 'Amount of the loan principal that was charged off.'
+        WHEN 'GrApprv' THEN 'Total loan amount approved by the lending bank.'
+        WHEN 'SBA_Apprv' THEN 'Portion of the loan amount guaranteed by the SBA.'
+        ELSE 'Column used for SBA loan analysis.'
+    END AS Description,
+    CONCAT(
+        'Column ', COLUMN_NAME,
+        ' in table ', TABLE_NAME,
+        '. Data type: ', DATA_TYPE,
+        '. Description: ',
+        CASE COLUMN_NAME
+            WHEN 'LoanNr_ChkDgt' THEN 'Unique identifier for each SBA loan.'
+            WHEN 'Name' THEN 'Name of the business that received the SBA loan.'
+            WHEN 'City' THEN 'City where the business is located.'
+            WHEN 'State' THEN 'State where the business operates.'
+            WHEN 'Zip' THEN 'ZIP code of the business.'
+            WHEN 'Bank' THEN 'Bank that issued the SBA loan.'
+            WHEN 'BankState' THEN 'State where the bank branch is located.'
+            WHEN 'NAICS' THEN 'Industry classification code representing the business industry.'
+            WHEN 'ApprovalDate' THEN 'Date when the SBA loan was approved.'
+            WHEN 'ApprovalFY' THEN 'Fiscal year when the loan was approved.'
+            WHEN 'Term' THEN 'Loan term length in months.'
+            WHEN 'NoEmp' THEN 'Number of employees working at the business.'
+            WHEN 'NewExist' THEN 'Indicator showing whether the business is new or existing.'
+            WHEN 'CreateJob' THEN 'Number of jobs expected to be created due to the loan.'
+            WHEN 'RetainedJob' THEN 'Number of jobs expected to be retained due to the loan.'
+            WHEN 'FranchiseCode' THEN 'Code identifying whether the business is a franchise.'
+            WHEN 'UrbanRural' THEN 'Indicator showing whether the business is located in an urban or rural area.'
+            WHEN 'RevLineCr' THEN 'Indicator showing whether the loan is a revolving line of credit.'
+            WHEN 'LowDoc' THEN 'Indicator showing whether the loan was issued through the SBA LowDoc program.'
+            WHEN 'ChgOffDate' THEN 'Date when the loan was charged off due to default.'
+            WHEN 'DisbursementDate' THEN 'Date when the loan funds were disbursed to the borrower.'
+            WHEN 'DisbursementGross' THEN 'Total amount of the loan disbursed to the borrower.'
+            WHEN 'BalanceGross' THEN 'Remaining balance of the loan.'
+            WHEN 'MIS_Status' THEN 'Loan status such as Paid in Full or Charged Off.'
+            WHEN 'ChgOffPrinciple' THEN 'Amount of the loan principal that was charged off.'
+            WHEN 'GrApprv' THEN 'Total loan amount approved by the lending bank.'
+            WHEN 'SBA_Apprv' THEN 'Portion of the loan amount guaranteed by the SBA.'
+            ELSE 'Column used for SBA loan analysis.'
+        END
+    ) AS DocumentBody
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'sra_demo_db'
+AND TABLE_NAME = 'sba_loans';
+
+
+
+CREATE TABLE successful_queries (
+    Id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    UserQuestion TEXT NOT NULL,
+    GeneratedSQL TEXT NOT NULL,
+    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255),
+    role VARCHAR(50) DEFAULT 'user',
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE chat_sessions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    name VARCHAR(255),
+    metadata JSON,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE chat_messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    thread_id INT NOT NULL,
+    role VARCHAR(50) NOT NULL,        -- 'user' or 'assistant'
+    content TEXT NOT NULL,
+    metadata JSON,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (thread_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+);
+
