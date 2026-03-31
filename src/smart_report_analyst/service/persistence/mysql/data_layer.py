@@ -65,7 +65,7 @@ class MySQLDataLayer(BaseDataLayer):
                     metadata = load_json(row.get("metadata")) or {}
                     return PersistedUser(
                         id=str(row["id"]),
-                        identifier=row["identifier"],
+                        identifier=str(row["id"]),
                         metadata=metadata,
                         createdAt=row["created_at"].isoformat() if hasattr(row["created_at"], 'isoformat') else str(row["created_at"])
                     )
@@ -108,7 +108,7 @@ class MySQLDataLayer(BaseDataLayer):
 
                 return PersistedUser(
                     id=str(row["id"]),
-                    identifier=row["identifier"],
+                    identifier=str(row["id"]),
                     metadata=load_json(row["metadata"]) or {},
                     createdAt=row["created_at"].isoformat() if hasattr(row["created_at"], 'isoformat') else str(row["created_at"])
                 )
@@ -168,11 +168,10 @@ class MySQLDataLayer(BaseDataLayer):
     # In data_layer.py
 
     async def create_thread(self, thread_dict: Dict) -> Dict:
-        """This is the signature Chainlit expects."""
         await self.init_pool()
         
-        # Chainlit provides the UUID here!
         thread_id = thread_dict.get("id") 
+        # Use 1 as fallback if userId isn't provided, ensuring it stays an INT for the DB
         user_id = thread_dict.get("userId") or 1
         name = thread_dict.get("name") or "New Chat"
         metadata = json.dumps(thread_dict.get("metadata")) if thread_dict.get("metadata") else None
@@ -187,13 +186,19 @@ class MySQLDataLayer(BaseDataLayer):
                     """,
                     (thread_id, user_id, name, metadata),
                 )
-                # Fetch timestamps to return to Chainlit
+                
+                # Fetch the timestamp created by the DB
                 await cur.execute("SELECT created_at FROM chat_sessions WHERE id=%s", (thread_id,))
                 row = await cur.fetchone()
-                
-        # Return the dict Chainlit expects
-        thread_dict["createdAt"] = row["created_at"]
-        return thread_dict
+                    
+        return {
+            "id": thread_id,
+            "userId": str(user_id),
+            "userIdentifier": str(user_id),
+            "name": name,
+            "metadata": thread_dict.get("metadata"),
+            "createdAt": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"])
+        }
     
     async def get_thread(self, thread_id: str) -> Optional[Dict[str, Any]]:
         await self.init_pool()
@@ -215,6 +220,7 @@ class MySQLDataLayer(BaseDataLayer):
                     "id": str(row["id"]),
                     "name": row.get("name"),
                     "userId": str(row["user_id"]),
+                    "userIdentifier": str(row["user_id"]), 
                     "metadata": metadata,
                     "createdAt": row["created_at"],
                     "updatedAt": row["updated_at"],
@@ -247,11 +253,8 @@ class MySQLDataLayer(BaseDataLayer):
     async def update_thread(self, thread_id: str, name: Optional[str] = None, metadata: Optional[Dict] = None) -> None:
         await self.init_pool()
 
-        metadata = thread.get("metadata")
-        if metadata is not None:
-            metadata = dump_json(metadata) 
-        else:
-            metadata = None
+        # Convert metadata to JSON if it exists
+        metadata_json = json.dumps(metadata) if metadata is not None else None
 
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -263,10 +266,6 @@ class MySQLDataLayer(BaseDataLayer):
                     """,
                     (name, metadata_json, thread_id),
                 )
-        updated = await self.get_thread(thread["id"])
-        if not updated:
-            return thread
-        return updated
 
     async def delete_thread(self, thread_id: str) -> None:
         await self.init_pool()
