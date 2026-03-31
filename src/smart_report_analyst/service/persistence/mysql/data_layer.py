@@ -305,32 +305,21 @@ class MySQLDataLayer(BaseDataLayer):
 
         # Map Chainlit StepDict to your chat_messages table
         thread_id = step_dict.get("threadId")
+        msg_id = step_dict.get("id")
         # Determine role: if it's 'user_message', use 'user', otherwise 'assistant'
         role = "user" if step_dict.get("type") == "user_message" else "assistant"
         # Content can be in 'input' (for users) or 'output' (for assistant)
         content = step_dict.get("output") or step_dict.get("input") or ""
-        
-        # Metadata and Generation data
-        metadata = step_dict.get("metadata", {})
-        # If there's LLM generation data, we can bundle it into metadata
-        if step_dict.get("generation"):
-            metadata["generation"] = step_dict.get("generation")
-        
-        metadata_json = json.dumps(metadata) if metadata else None
 
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO chat_messages (id, session_id, role, content, tool_result)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO chat_messages (id, session_id, role, content)
+                    VALUES (%s, %s, %s, %s)
                     """,
                     (
-                        step_dict.get("id"), # Use Chainlit's UUID to track the message
-                        thread_id,
-                        role,
-                        content,
-                        metadata_json
+                        msg_id, thread_id, role, content
                     ),
                 )
                 # Optional: Update the session's 'updated_at' timestamp
@@ -344,17 +333,16 @@ class MySQLDataLayer(BaseDataLayer):
 
         step_id = step_dict.get("id")
         content = step_dict.get("output") or step_dict.get("input") or ""
-        metadata = json.dumps(step_dict.get("metadata", {}))
 
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
                     UPDATE chat_messages 
-                    SET content=%s, tool_result=%s, updated_at=NOW()
+                    SET content=%s, updated_at=NOW()
                     WHERE id=%s
                     """,
-                    (content, metadata, step_id),
+                    (content, step_id),
                 )
 
     async def delete_step(self, *args, **kwargs):

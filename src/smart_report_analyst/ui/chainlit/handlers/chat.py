@@ -76,43 +76,51 @@ async def on_message(message: cl.Message):
     cl.user_session.set("chat_history", history)
 
     # response: Dict[str, Any] = {}
+    async with cl.Step(name="Bedrock Agent", type="assistant_message") as step:
+        step.input = message.content
+        full_response = ""
+        tool_result = {}
 
-    full_response = ""
-    tool_result = {}
+        try:
+            # with cl.Step(name="Bedrock Agent", type="llm", show_input=True) as step:
+            #     step.input = message.content
+            #     current_step = cl.context.current_step
 
-    try:
-        # with cl.Step(name="Bedrock Agent", type="llm", show_input=True) as step:
-        #     step.input = message.content
-        #     current_step = cl.context.current_step
+            # response = await asyncio.to_thread(
+            #     bedrock_manager.invoke_agent,
+            #     prompt=message.content,
+            #     agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
+            #     agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
+            #     session_id=session_id,
+            # )
+            # if get_agent_backend_kind(settings) == "strands":
+            #     async for event in async_stream_strands_turn(settings, history):
+            #         if event["type"] == "chunk":
+            #             token = event["data"]
+            #             full_response += token
+            #         elif event["type"] == "tool_result":
+            #             tool_result = event["data"]
+            # else:
+            stream = bedrock_manager.invoke_agent_stream(
+                prompt=message.content,
+                agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
+                agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
+                session_id=bedrock_session_id,
+            )
+            for event in stream:
+                if event["type"] == "chunk":
+                    token = event["data"]
+                    full_response += token
 
-        # response = await asyncio.to_thread(
-        #     bedrock_manager.invoke_agent,
-        #     prompt=message.content,
-        #     agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
-        #     agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
-        #     session_id=session_id,
-        # )
-        # if get_agent_backend_kind(settings) == "strands":
-        #     async for event in async_stream_strands_turn(settings, history):
-        #         if event["type"] == "chunk":
-        #             token = event["data"]
-        #             full_response += token
-        #         elif event["type"] == "tool_result":
-        #             tool_result = event["data"]
-        # else:
-        stream = bedrock_manager.invoke_agent_stream(
-            prompt=message.content,
-            agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
-            agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
-            session_id=bedrock_session_id,
-        )
-        for event in stream:
-            if event["type"] == "chunk":
-                token = event["data"]
-                full_response += token
+                elif event["type"] == "tool_result":
+                    tool_result = event["data"]
+            
+            step.output = full_response
 
-            elif event["type"] == "tool_result":
-                tool_result = event["data"]
+        except Exception as e:
+            step.output = f"Error: {str(e)}"
+            await cl.ErrorMessage(content=f"Stream error: {e}").send()
+            return
 
         history = cl.user_session.get("chat_history", [])
 
@@ -154,9 +162,3 @@ async def on_message(message: cl.Message):
             }),
             elements=elements, 
         ).send() 
-        
-    except Exception as exc: 
-        logger.exception("Error while handling user message") 
-        await cl.Message( 
-            content=f"Sorry, something went wrong while processing your request.\n\n{exc}" 
-        ).send()
