@@ -73,18 +73,6 @@ async def on_message(message: cl.Message):
         "content": message.content
     })
 
-    # Persist user message
-    try:
-        await data_layer.create_element({
-            "thread_id": thread_id,
-            "role": "user",
-            "content": message.content,
-            "metadata": None
-        })
-
-    except Exception:
-        logger.exception("Failed to save user message")
-
     cl.user_session.set("chat_history", history)
 
     # response: Dict[str, Any] = {}
@@ -132,17 +120,6 @@ async def on_message(message: cl.Message):
             "role": "assistant",
             "content": full_response
         })
-
-        # Persist assistant message
-        try:
-            await data_layer.create_element({
-                "thread_id": thread_id,
-                "role": "assistant",
-                "content": full_response,
-                "metadata": tool_result or None
-            })
-        except Exception:
-            logger.exception("Failed to save assistant message")
 
         cl.user_session.set("chat_history", history)
             

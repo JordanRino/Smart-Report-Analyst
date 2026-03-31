@@ -18,4 +18,5 @@ pip install uv
 
 uv sync --active
 
+chainlit run src/smart_report_analyst/ui/chainlit/manager.py --host 0.0.0.0 --port 8000
 
