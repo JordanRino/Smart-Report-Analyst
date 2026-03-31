@@ -250,7 +250,7 @@ class MySQLDataLayer(BaseDataLayer):
                     createdAt=row["created_at"].isoformat() if hasattr(row["created_at"], 'isoformat') else str(row["created_at"])
                 )
 
-    async def update_thread(self, thread_id: str, name: Optional[str] = None, metadata: Optional[Dict] = None) -> None:
+    async def update_thread(self, thread_id: str, name: Optional[str] = None, user_id: Optional[str] = None, metadata: Optional[Dict] = None, **kwargs) -> None:
         await self.init_pool()
 
         # Convert metadata to JSON if it exists

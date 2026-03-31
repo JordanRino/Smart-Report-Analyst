@@ -77,7 +77,6 @@ async def on_message(message: cl.Message):
 
     # response: Dict[str, Any] = {}
     async with cl.Step(name="Bedrock Agent", type="assistant_message") as step:
-        step.input = message.content
         full_response = ""
         tool_result = {}
 
@@ -153,9 +152,7 @@ async def on_message(message: cl.Message):
             )
             elements.append(report_file)
 
-        await cl.Message( 
-            content=final_response, 
-            # actions=_build_actions(response),
+        await cl.Message(
             actions=_build_actions({
                 "final_response": full_response,
                 "tool_result": tool_result,
