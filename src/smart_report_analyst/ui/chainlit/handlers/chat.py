@@ -73,29 +73,17 @@ async def on_message(message: cl.Message):
         "content": message.content
     })
 
-    # Persist user message
-    try:
-        await data_layer.create_element({
-            "thread_id": thread_id,
-            "role": "user",
-            "content": message.content,
-            "metadata": None
-        })
-
-    except Exception:
-        logger.exception("Failed to save user message")
-
     cl.user_session.set("chat_history", history)
 
     # response: Dict[str, Any] = {}
+    async with cl.Step(name="Bedrock Agent", type="assistant_message") as step:
+        full_response = ""
+        tool_result = {}
 
-    full_response = ""
-    tool_result = {}
-
-    try:
-        # with cl.Step(name="Bedrock Agent", type="llm", show_input=True) as step:
-        #     step.input = message.content
-        #     current_step = cl.context.current_step
+        try:
+            # with cl.Step(name="Bedrock Agent", type="llm", show_input=True) as step:
+            #     step.input = message.content
+            #     current_step = cl.context.current_step
 
         # response = await asyncio.to_thread(
         #     bedrock_manager.invoke_agent,
@@ -125,6 +113,13 @@ async def on_message(message: cl.Message):
 
                 elif event["type"] == "tool_result":
                     tool_result = event["data"]
+            
+            step.output = full_response
+
+        except Exception as e:
+            step.output = f"Error: {str(e)}"
+            await cl.ErrorMessage(content=f"Stream error: {e}").send()
+            return
 
         history = cl.user_session.get("chat_history", [])
 
@@ -132,17 +127,6 @@ async def on_message(message: cl.Message):
             "role": "assistant",
             "content": full_response
         })
-
-        # Persist assistant message
-        try:
-            await data_layer.create_element({
-                "thread_id": thread_id,
-                "role": "assistant",
-                "content": full_response,
-                "metadata": tool_result or None
-            })
-        except Exception:
-            logger.exception("Failed to save assistant message")
 
         cl.user_session.set("chat_history", history)
             
@@ -169,7 +153,7 @@ async def on_message(message: cl.Message):
             elements.append(report_file)
 
         await cl.Message( 
-            content=final_response, 
+            content="I have generated a report for the records collected from executing the SQL", 
             # actions=_build_actions(response),
             actions=_build_actions({
                 "final_response": full_response,
@@ -177,9 +161,3 @@ async def on_message(message: cl.Message):
             }),
             elements=elements, 
         ).send() 
-        
-    except Exception as exc: 
-        logger.exception("Error while handling user message") 
-        await cl.Message( 
-            content=f"Sorry, something went wrong while processing your request.\n\n{exc}" 
-        ).send()

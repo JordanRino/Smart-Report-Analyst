@@ -31,16 +31,11 @@ async def on_chat_start():
     if not current_user:
         await cl.Message(content="You must be logged in.").send()
         return
-    
-    # Create a new thread automatically
-    thread = await data_layer.create_thread(
-        user_id=current_user.identifier,
-        name="New Conversation",
-        metadata=None
-    )
+
+    thread_id = cl.context.session.thread_id
 
     # Store session state
-    cl.user_session.set("thread_id", str(thread["id"]))
+    cl.user_session.set("thread_id", thread_id)
     cl.user_session.set("bedrock_session_id", f"br-{uuid.uuid4().hex}")
     cl.user_session.set("chat_history", [])
     cl.user_session.set("last_response", None)

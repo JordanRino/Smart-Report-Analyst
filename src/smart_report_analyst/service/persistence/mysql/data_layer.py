@@ -65,7 +65,7 @@ class MySQLDataLayer(BaseDataLayer):
                     metadata = load_json(row.get("metadata")) or {}
                     return PersistedUser(
                         id=str(row["id"]),
-                        identifier=row["identifier"],
+                        identifier=str(row["id"]),
                         metadata=metadata,
                         createdAt=row["created_at"].isoformat() if hasattr(row["created_at"], 'isoformat') else str(row["created_at"])
                     )
@@ -108,7 +108,7 @@ class MySQLDataLayer(BaseDataLayer):
 
                 return PersistedUser(
                     id=str(row["id"]),
-                    identifier=row["identifier"],
+                    identifier=str(row["id"]),
                     metadata=load_json(row["metadata"]) or {},
                     createdAt=row["created_at"].isoformat() if hasattr(row["created_at"], 'isoformat') else str(row["created_at"])
                 )
@@ -165,31 +165,40 @@ class MySQLDataLayer(BaseDataLayer):
                     pageInfo=page_info
                 )
 
-    async def create_thread(self, user_id: str, name: Optional[str] = None, metadata: Optional[Dict] = None) -> Dict[str, Any]:
-        await self.init_pool()
+    # In data_layer.py
 
-        if metadata and isinstance(metadata, dict):
-            metadata = json.dumps(metadata)
-        elif not metadata:
-            metadata = None
+    async def create_thread(self, thread_dict: Dict) -> Dict:
+        await self.init_pool()
+        
+        thread_id = thread_dict.get("id") 
+        # Use 1 as fallback if userId isn't provided, ensuring it stays an INT for the DB
+        user_id = thread_dict.get("userId") or 1
+        name = thread_dict.get("name") or "New Chat"
+        metadata = json.dumps(thread_dict.get("metadata")) if thread_dict.get("metadata") else None
 
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
-                    "INSERT INTO chat_sessions (user_id, name, metadata) VALUES (%s, %s, %s)",
-                    (user_id, name, metadata),
+                    """
+                    INSERT INTO chat_sessions (id, user_id, name, metadata) 
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE name = VALUES(name)
+                    """,
+                    (thread_id, user_id, name, metadata),
                 )
-                thread_id = cur.lastrowid
-                await cur.execute("SELECT created_at, updated_at FROM chat_sessions WHERE id=%s", (thread_id,))
+                
+                # Fetch the timestamp created by the DB
+                await cur.execute("SELECT created_at FROM chat_sessions WHERE id=%s", (thread_id,))
                 row = await cur.fetchone()
-                return {
-                    "id": str(thread_id),
-                    "name": name,
-                    "userIdentifier": str(user_id),
-                    "metadata": metadata,
-                    "createdAt": row["created_at"],
-                    "updatedAt": row["updated_at"],
-                }
+                    
+        return {
+            "id": thread_id,
+            "userId": str(user_id),
+            "userIdentifier": str(user_id),
+            "name": name,
+            "metadata": thread_dict.get("metadata"),
+            "createdAt": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"])
+        }
     
     async def get_thread(self, thread_id: str) -> Optional[Dict[str, Any]]:
         await self.init_pool()
@@ -211,6 +220,7 @@ class MySQLDataLayer(BaseDataLayer):
                     "id": str(row["id"]),
                     "name": row.get("name"),
                     "userId": str(row["user_id"]),
+                    "userIdentifier": str(row["user_id"]), 
                     "metadata": metadata,
                     "createdAt": row["created_at"],
                     "updatedAt": row["updated_at"],
@@ -240,14 +250,11 @@ class MySQLDataLayer(BaseDataLayer):
                     createdAt=row["created_at"].isoformat() if hasattr(row["created_at"], 'isoformat') else str(row["created_at"])
                 )
 
-    async def update_thread(self, thread: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_thread(self, thread_id: str, name: Optional[str] = None, user_id: Optional[str] = None, metadata: Optional[Dict] = None, **kwargs) -> None:
         await self.init_pool()
 
-        metadata = thread.get("metadata")
-        if metadata is not None:
-            metadata = dump_json(metadata) 
-        else:
-            metadata = None
+        # Convert metadata to JSON if it exists
+        metadata_json = json.dumps(metadata) if metadata is not None else None
 
         async with self.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -257,12 +264,8 @@ class MySQLDataLayer(BaseDataLayer):
                     SET name=%s, metadata=%s, updated_at=NOW()
                     WHERE id=%s
                     """,
-                    (thread.get("name"), metadata, thread["id"]),
+                    (name, metadata_json, thread_id),
                 )
-        updated = await self.get_thread(thread["id"])
-        if not updated:
-            return thread
-        return updated
 
     async def delete_thread(self, thread_id: str) -> None:
         await self.init_pool()
@@ -300,11 +303,52 @@ class MySQLDataLayer(BaseDataLayer):
                 return rows
 
     # ----------------- Step Methods -----------------
-    async def create_step(self, *args, **kwargs):
-        pass
+    async def create_step(self, step_dict: Dict):
+        await self.init_pool()
+        
+        session_id = step_dict.get("threadId")
+        step_id = step_dict.get("id")
+        # Mapping Chainlit roles to your DB roles
+        role = step_dict.get("type", "assistant") 
+        content = step_dict.get("output", "")
 
-    async def update_step(self, *args, **kwargs):
-        pass
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                # SAFETY NET: Ensure the session exists before saving the step
+                await cur.execute(
+                    """
+                    INSERT IGNORE INTO chat_sessions (id, user_id, name)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (session_id, 1, "New Conversation") 
+                )
+
+                # Now save the step
+                await cur.execute(
+                    """
+                    INSERT INTO chat_messages (id, session_id, role, content)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE content = VALUES(content)
+                    """,
+                    (step_id, session_id, role, content)
+                )
+
+    async def update_step(self, step_dict: Dict) -> None:
+        await self.init_pool()
+
+        step_id = step_dict.get("id")
+        content = step_dict.get("output") or step_dict.get("input") or ""
+
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE chat_messages 
+                    SET content=%s, updated_at=NOW()
+                    WHERE id=%s
+                    """,
+                    (content, step_id),
+                )
 
     async def delete_step(self, *args, **kwargs):
         pass
@@ -319,44 +363,80 @@ class MySQLDataLayer(BaseDataLayer):
         raise NotImplementedError
 
     # ----------------- Element Methods -----------------
-    async def create_element(self, element ) -> str:
+
+    async def create_element(self, element: Element) -> None:
         await self.init_pool()
 
-        if isinstance(element, Element):
-            element_dict = element.to_dict()
-        else:
-            element_dict = element    
-
-        thread_id = element_dict.get("thread_id")
-        role = element_dict.get("role", "assistant")
-        content = element_dict.get("content")
-
-        metadata = element_dict.get("metadata")
-        metadata_json = dump_json(metadata) if metadata else None
+        # Chainlit's Element object provides .to_dict()
+        element_dict = element.to_dict()
+        
+        # Extract values
+        element_id = element_dict.get("id")
+        thread_id = element_dict.get("threadId")
+        for_id = element_dict.get("forId")  # This links it to the Message ID
+        el_type = element_dict.get("type")
+        name = element_dict.get("name")
+        url = element_dict.get("url")
+        chainlit_key = element_dict.get("chainlitKey")
 
         async with self.pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
+            async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO chat_messages (session_id, role, content, tool_result)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO chat_elements (id, session_id, for_id, type, name, url, chainlit_key)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE 
+                        url = VALUES(url), 
+                        chainlit_key = VALUES(chainlit_key)
                     """,
                     (
+                        element_id,
                         thread_id,
-                        role,
-                        content,
-                        metadata_json,
+                        for_id,
+                        el_type,
+                        name,
+                        url,
+                        chainlit_key
                     ),
                 )
-                last_id = str(cur.lastrowid)
+    # async def create_element(self, element ) -> str:
+    #     await self.init_pool()
 
-                # Update last activity
-                await cur.execute(
-                    "UPDATE chat_sessions SET updated_at=NOW() WHERE id=%s",
-                    (element_dict["thread_id"],)
-                )
+    #     if isinstance(element, Element):
+    #         element_dict = element.to_dict()
+    #     else:
+    #         element_dict = element    
 
-                return last_id
+    #     thread_id = element_dict.get("threadId")
+    #     role = element_dict.get("role", "assistant")
+    #     content = element_dict.get("content")
+
+    #     metadata = element_dict.get("metadata")
+    #     metadata_json = dump_json(metadata) if metadata else None
+
+    #     async with self.pool.acquire() as conn:
+    #         async with conn.cursor(aiomysql.DictCursor) as cur:
+    #             await cur.execute(
+    #                 """
+    #                 INSERT INTO chat_messages (session_id, role, content, tool_result)
+    #                 VALUES (%s, %s, %s, %s)
+    #                 """,
+    #                 (
+    #                     thread_id,
+    #                     role,
+    #                     content,
+    #                     metadata_json,
+    #                 ),
+    #             )
+    #             last_id = str(cur.lastrowid)
+
+    #             # Update last activity
+    #             await cur.execute(
+    #                 "UPDATE chat_sessions SET updated_at=NOW() WHERE id=%s",
+    #                 (thread_id,)
+    #             )
+
+    #             return last_id
 
     async def get_element(self, element_id: str):
         raise NotImplementedError
