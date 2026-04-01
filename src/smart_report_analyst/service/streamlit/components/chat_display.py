@@ -9,9 +9,9 @@ from smart_report_analyst.service.streamlit import config
 from smart_report_analyst.service.streamlit.state import UIState
 from smart_report_analyst.service.lambda_function.manager import LambdaManager
 from smart_report_analyst.service.feedback.manager import handle_positive_feedback
-from smart_report_analyst.config.settings import Settings
+from smart_report_analyst.config.settings import get_settings
 
-settings = Settings()
+settings = get_settings()
 
 
 def render_chat_message(message: Dict[str, Any]):

@@ -20,7 +20,7 @@ def _validate_strands_settings(settings: Settings) -> None:
         raise ValueError("BEDROCK_KNOWLEDGE_BASE_ID is required when AGENT_BACKEND=strands")
 
 
-async def async_stream_strands_turn(
+async def run_stream(
     settings: Settings,
     history: list[dict[str, Any]],
 ) -> AsyncIterator[dict[str, Any]]:
@@ -63,7 +63,7 @@ async def async_stream_strands_turn(
     yield {"type": "tool_result", "data": turn_state.last_tool_result or {}}
 
 
-def run_strands_turn_sync(
+def run_sync(
     settings: Settings,
     history: list[dict[str, Any]],
 ) -> dict[str, Any]:

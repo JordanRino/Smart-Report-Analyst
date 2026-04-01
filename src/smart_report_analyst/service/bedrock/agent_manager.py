@@ -2,9 +2,9 @@ import boto3
 import logging
 import json
 from botocore.exceptions import ClientError, EventStreamError
-from smart_report_analyst.config.settings import Settings
+from smart_report_analyst.config.settings import get_settings
 
-settings = Settings()
+settings = get_settings()
 logger = logging.getLogger(__name__)
 
 class BedrockManager:

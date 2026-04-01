@@ -11,28 +11,10 @@ from strands import tool
 
 from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.bedrock.kb_manager import KnowledgeBaseRetriever
-from smart_report_analyst.service.lambda_function.manager import LambdaManager
+from smart_report_analyst.service.persistence.mysql.app_data_layer import app_data_layer
 
 logger = logging.getLogger(__name__)
 
-
-def _parse_lambda_invoke_payload(raw_body: bytes | str) -> dict[str, Any]:
-    """Parse Lambda response body; return a dict or an error-shaped dict."""
-    if isinstance(raw_body, bytes):
-        try:
-            text = raw_body.decode("utf-8")
-        except Exception:
-            return {"error": True, "message": "Invalid Lambda response encoding"}
-    else:
-        text = raw_body
-    text = (text or "").strip()
-    if not text:
-        return {"error": True, "message": "Empty Lambda response"}
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        logger.warning("Lambda returned non-JSON body: %s", text[:500])
-        return {"error": True, "message": text[:2000]}
 
 
 @dataclass
@@ -45,10 +27,6 @@ class StrandsTurnState:
 def build_strands_tools(settings: Settings, turn_state: StrandsTurnState) -> list:
     """Build tool callables bound to settings and turn-scoped result capture."""
     kb = KnowledgeBaseRetriever(settings)
-    lambda_manager = LambdaManager()
-    function_name = (
-        settings.STRANDS_SQL_LAMBDA_FUNCTION_NAME or settings.STORE_SQL_LAMBDA_FUNCTION_NAME
-    )
 
     @tool
     def retrieve_kb_context(query: str) -> str:
@@ -65,9 +43,9 @@ def build_strands_tools(settings: Settings, turn_state: StrandsTurnState) -> lis
         return kb.retrieve(query)
 
     @tool
-    def execute_sql(query: str, user_refined_question: str, to_store: bool) -> dict:
+    async def execute_sql(query: str, user_refined_question: str, to_store: bool) -> dict:
         """
-        Execute a SQL query against the SBA loan database via the configured Lambda function.
+        Execute a SQL query against the SBA loan database directly via MySQL.
 
         Args:
             query: The SQL statement to run.
@@ -77,25 +55,12 @@ def build_strands_tools(settings: Settings, turn_state: StrandsTurnState) -> lis
         Returns:
             JSON object with executed_sql, results, row_count, refined_user_question, to_store.
         """
-        payload = {
-            "query": query,
-            "user_refined_question": user_refined_question,
-            "to_store": bool(to_store),
-        }
         try:
-            response = lambda_manager.invoke_function(
-                function_name,
-                payload,
-                get_log=False,
-            )
-            raw = response["Payload"].read()
-            body = _parse_lambda_invoke_payload(raw)
-            if body.get("error") is not True and "results" not in body:
-                body = {**body, "results": []}
+            body = await app_data_layer.execute_generated_query(query, user_refined_question, to_store)
             turn_state.last_tool_result = body
             return body
         except Exception as e:
-            logger.exception("execute_sql Lambda invocation failed")
+            logger.exception("execute_sql failed")
             err = {
                 "error": True,
                 "message": str(e),

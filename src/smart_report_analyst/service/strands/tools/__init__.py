@@ -1,4 +1,4 @@
-from smart_report_analyst.service.strands.tools.strands_tools import (
+from smart_report_analyst.service.strands.tools.tools import (
     StrandsTurnState,
     build_strands_tools,
 )

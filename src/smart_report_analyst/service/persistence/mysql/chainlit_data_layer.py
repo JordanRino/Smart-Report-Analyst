@@ -13,18 +13,22 @@ from chainlit.element import ElementDict, Element
 
 from typing import Any, Dict, Optional, List
 
+
+from smart_report_analyst.config.settings import get_settings
+
 from smart_report_analyst.service.persistence.mysql.utils import load_json, dump_json
 
 
 
 class MySQLDataLayer(BaseDataLayer):
-    def __init__(self, host, user, password, db, port=3306):
+    def __init__(self):
         self.pool = None
-        self.host = host
-        self.user = user
-        self.password = password
-        self.db = db
-        self.port = port
+        settings = get_settings()
+        self.host = settings.MYSQL_HOST
+        self.user = settings.MYSQL_USER
+        self.password = settings.MYSQL_PASSWORD
+        self.db = settings.MYSQL_DB
+        self.port = settings.MYSQL_PORT
 
     async def init_pool(self):
         if not self.pool:
@@ -164,8 +168,6 @@ class MySQLDataLayer(BaseDataLayer):
                     data=threads,
                     pageInfo=page_info
                 )
-
-    # In data_layer.py
 
     async def create_thread(self, thread_dict: Dict) -> Dict:
         await self.init_pool()
@@ -399,47 +401,12 @@ class MySQLDataLayer(BaseDataLayer):
                         chainlit_key
                     ),
                 )
-    # async def create_element(self, element ) -> str:
-    #     await self.init_pool()
-
-    #     if isinstance(element, Element):
-    #         element_dict = element.to_dict()
-    #     else:
-    #         element_dict = element    
-
-    #     thread_id = element_dict.get("threadId")
-    #     role = element_dict.get("role", "assistant")
-    #     content = element_dict.get("content")
-
-    #     metadata = element_dict.get("metadata")
-    #     metadata_json = dump_json(metadata) if metadata else None
-
-    #     async with self.pool.acquire() as conn:
-    #         async with conn.cursor(aiomysql.DictCursor) as cur:
-    #             await cur.execute(
-    #                 """
-    #                 INSERT INTO chat_messages (session_id, role, content, tool_result)
-    #                 VALUES (%s, %s, %s, %s)
-    #                 """,
-    #                 (
-    #                     thread_id,
-    #                     role,
-    #                     content,
-    #                     metadata_json,
-    #                 ),
-    #             )
-    #             last_id = str(cur.lastrowid)
-
-    #             # Update last activity
-    #             await cur.execute(
-    #                 "UPDATE chat_sessions SET updated_at=NOW() WHERE id=%s",
-    #                 (thread_id,)
-    #             )
-
-    #             return last_id
 
     async def get_element(self, element_id: str):
         raise NotImplementedError
 
     async def delete_element(self, element_id: str):
         raise NotImplementedError
+    
+# single instance to be shared across the app
+data_layer = MySQLDataLayer()

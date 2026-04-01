@@ -4,12 +4,12 @@ import uuid
 import subprocess
 from pathlib import Path
 
-from smart_report_analyst.config.settings import Settings
+from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.bedrock.agent_manager import BedrockManager
 from smart_report_analyst.service.strands.runner import run_strands_turn_sync
 
 logger = logging.getLogger(__name__)
-settings = Settings()
+settings = get_settings()
 
 
 class SmartReportAnalystApp:

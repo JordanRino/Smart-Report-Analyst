@@ -7,18 +7,12 @@ import chainlit as cl
 from smart_report_analyst.ui.chainlit.auth import auth_callback  # noqa
 from smart_report_analyst.ui.chainlit.handlers import chat  # noqa
 from smart_report_analyst.ui.chainlit.handlers import feedback  # noqa
-from smart_report_analyst.config.settings import Settings
-from smart_report_analyst.service.persistence.mysql.data_layer import MySQLDataLayer
+from smart_report_analyst.config.settings import get_settings
+from smart_report_analyst.service.persistence.mysql.chainlit_data_layer import MySQLDataLayer
 
-settings = Settings()
+settings = get_settings()
 
-data_layer = MySQLDataLayer(
-    host=settings.MYSQL_HOST,
-    user=settings.MYSQL_USER,
-    password=settings.MYSQL_PASSWORD,
-    db=settings.MYSQL_DB,
-    port=settings.MYSQL_PORT,
-)
+data_layer = MySQLDataLayer()
 
 @cl.data_layer
 def get_data_layer():

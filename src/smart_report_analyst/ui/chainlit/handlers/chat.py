@@ -10,9 +10,9 @@ from typing import Any, Dict, List
 import chainlit as cl
 from chainlit.data import get_data_layer
 
-from smart_report_analyst.config.settings import Settings
+from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.bedrock.agent_manager import BedrockManager
-from smart_report_analyst.service.strands.runner import async_stream_strands_turn
+from smart_report_analyst.service.strands.runner import run_stream
 from smart_report_analyst.service.report_generation import generate_pdf
 from smart_report_analyst.ui.chainlit.utils.formatting import (
     build_report_filename,
@@ -20,7 +20,7 @@ from smart_report_analyst.ui.chainlit.utils.formatting import (
 )
 
 logger = logging.getLogger(__name__)
-settings = Settings()
+settings = get_settings()
 bedrock_manager = BedrockManager()
 
 
@@ -56,7 +56,6 @@ def _build_actions(response: Dict[str, Any]) -> List[cl.Action]:
 async def on_message(message: cl.Message):
     thread_id = cl.user_session.get("thread_id")
     bedrock_session_id = cl.user_session.get("bedrock_session_id")
-    data_layer = get_data_layer()
 
     if not thread_id:
         await cl.Message(content="No active session. Please select or create one.").send()
@@ -92,29 +91,29 @@ async def on_message(message: cl.Message):
         #     agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
         #     session_id=session_id,
         # )
-        if settings.AGENT_BACKEND == "strands":
-            async for event in async_stream_strands_turn(settings, history):
-                if event["type"] == "chunk":
-                    token = event["data"]
-                    full_response += token
-                elif event["type"] == "tool_result":
-                    tool_result = event["data"]
-        else:
-            stream = bedrock_manager.invoke_agent_stream(
-                prompt=message.content,
-                agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
-                agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
-                session_id=bedrock_session_id,
-            )
-            for event in stream:
-                if event["type"] == "chunk":
-                    token = event["data"]
-                    full_response += token
+            if settings.AGENT_BACKEND == "strands":
+                async for event in run_stream(settings, history):
+                    if event["type"] == "chunk":
+                        token = event["data"]
+                        full_response += token
+                    elif event["type"] == "tool_result":
+                        tool_result = event["data"]
+            else:
+                stream = bedrock_manager.invoke_agent_stream(
+                    prompt=message.content,
+                    agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
+                    agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
+                    session_id=bedrock_session_id,
+                )
+                for event in stream:
+                    if event["type"] == "chunk":
+                        token = event["data"]
+                        full_response += token
 
-                elif event["type"] == "tool_result":
-                    tool_result = event["data"]
-            
-            step.output = full_response
+                    elif event["type"] == "tool_result":
+                        tool_result = event["data"]
+                
+                step.output = full_response
 
         except Exception as e:
             step.output = f"Error: {str(e)}"
@@ -129,10 +128,6 @@ async def on_message(message: cl.Message):
         })
 
         cl.user_session.set("chat_history", history)
-            
-        # final_response = response.get("final_response", "Sorry, I could not generate a response.") 
-        # tool_result = response.get("tool_result") or {}
-        final_response = full_response
 
         cl.user_session.set("last_response", {
             "final_response": full_response,
@@ -154,7 +149,6 @@ async def on_message(message: cl.Message):
 
         await cl.Message( 
             content="I have generated a report for the records collected from executing the SQL", 
-            # actions=_build_actions(response),
             actions=_build_actions({
                 "final_response": full_response,
                 "tool_result": tool_result,

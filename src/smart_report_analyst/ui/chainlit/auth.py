@@ -3,18 +3,10 @@ import bcrypt
 import aiomysql
 import chainlit as cl
 
-from smart_report_analyst.config.settings import Settings
-from smart_report_analyst.service.persistence.mysql.data_layer import MySQLDataLayer
+from smart_report_analyst.config.settings import get_settings
+from smart_report_analyst.service.persistence.mysql.chainlit_data_layer import data_layer
 
-settings = Settings()
-
-data_layer = MySQLDataLayer(
-    host=settings.MYSQL_HOST,
-    user=settings.MYSQL_USER,
-    password=settings.MYSQL_PASSWORD,
-    db=settings.MYSQL_DB,
-    port=settings.MYSQL_PORT,
-)
+settings = get_settings()
 
 
 @cl.password_auth_callback

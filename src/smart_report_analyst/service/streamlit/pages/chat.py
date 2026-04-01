@@ -5,15 +5,15 @@ import logging
 import streamlit as st
 
 from smart_report_analyst.service.bedrock.agent_manager import BedrockManager
-from smart_report_analyst.service.strands.runner import run_strands_turn_sync
+from smart_report_analyst.service.strands.runner import run_sync
 
 from smart_report_analyst.service.streamlit.components import render_chat_input, render_conversation_history, render_export_button
 from smart_report_analyst.service.report_generation import generate_pdf
-from smart_report_analyst.config.settings import Settings
+from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.streamlit.state import UIState
 
 logger = logging.getLogger(__name__)
-settings = Settings()
+settings = get_settings()
 
 
 bedrock_manager = BedrockManager()
@@ -37,7 +37,7 @@ def handle_user_input(user_input: str):
                     {"role": m["role"], "content": m["content"]}
                     for m in UIState.get_conversation_history()
                 ]
-                response = run_strands_turn_sync(settings, slim_history)
+                response = run_sync(settings, slim_history)
             else:
                 response = bedrock_manager.invoke_agent(
                     prompt=user_input,

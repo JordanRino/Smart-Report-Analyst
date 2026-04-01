@@ -3,11 +3,11 @@ import logging
 import boto3
 from botocore.exceptions import ClientError
 
-from smart_report_analyst.config import Settings
+from smart_report_analyst.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-settings = Settings()
+settings = get_settings()
 
 
 class LambdaManager:
