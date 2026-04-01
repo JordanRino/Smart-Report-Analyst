@@ -27,34 +27,6 @@ DB_NAME = os.environ.get("DB_NAME")
 _rds_connection = None
 
 
-def _parse_bool(value, default: bool = True) -> bool:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    s = str(value).strip().lower()
-    if s in ("true", "1", "yes"):
-        return True
-    if s in ("false", "0", "no"):
-        return False
-    return default
-
-
-def _json_safe_row(row: dict) -> dict:
-    """Make row JSON-serializable for Lambda's return serializer."""
-    out = {}
-    for k, v in row.items():
-        if isinstance(v, Decimal):
-            out[k] = float(v) if v == v.to_integral_value() else float(v)
-        elif isinstance(v, (datetime, date)):
-            out[k] = v.isoformat()
-        elif isinstance(v, (bytes, bytearray)):
-            out[k] = v.decode("utf-8", errors="replace")
-        else:
-            out[k] = v
-    return out
-
-
 def _connect():
     global _rds_connection
     try:
@@ -89,7 +61,7 @@ def lambda_handler(event, context):
 
     sql = event.get("query")
     user_refined = event.get("user_refined_question")
-    to_store = _parse_bool(event.get("to_store"), default=True)
+    to_store = str(event.get("to_store")).strip().lower() == "true"
 
     if not sql or not str(sql).strip():
         return {
@@ -108,14 +80,13 @@ def lambda_handler(event, context):
         conn = _connect()
         with conn.cursor() as cursor:
             cursor.execute(sql)
-            rows = cursor.fetchall()
+            result = cursor.fetchall()
 
-        safe = [_json_safe_row(dict(r)) for r in rows]
         return {
             "refined_user_question": user_refined,
             "executed_sql": sql,
-            "results": safe,
-            "row_count": len(safe),
+            "results": result,
+            "row_count": len(result),
             "to_store": to_store,
         }
 

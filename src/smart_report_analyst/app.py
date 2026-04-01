@@ -5,7 +5,8 @@ import subprocess
 from pathlib import Path
 
 from smart_report_analyst.config.settings import Settings
-from smart_report_analyst.service.bedrock.manager import BedrockManager
+from smart_report_analyst.service.bedrock.agent_manager import BedrockManager
+from smart_report_analyst.service.strands.runner import run_strands_turn_sync
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -18,7 +19,8 @@ class SmartReportAnalystApp:
     async def run_cli(self):
         """Start the interactive CLI for the Smart Report Analyst."""
         session_id = uuid.uuid4().hex
-        
+        strands_history: list[dict] = []
+
         print("Hi there! I'm your Smart Report Analyst. Ask me anything about your data, and I'll do my best to help you out.")
         print("Type 'exit' or 'quit' to end the conversation.")
         
@@ -30,15 +32,22 @@ class SmartReportAnalystApp:
                     break
                 if not user_prompt:
                     continue
-                    
-                response = await asyncio.to_thread(
-                    self.bedrock_manager.invoke_agent,
-                    user_prompt,
-                    settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
-                    settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
-                    session_id
-                )
-                print(f"\nSmart Report Analyst: {response}\n")
+
+                if settings.AGENT_BACKEND == "strands":
+                    strands_history.append({"role": "user", "content": user_prompt})
+                    response = await asyncio.to_thread(run_strands_turn_sync, settings, strands_history)
+                    assistant_text = response.get("final_response", "")
+                    strands_history.append({"role": "assistant", "content": assistant_text})
+                    print(f"\nSmart Report Analyst: {assistant_text}\n")
+                else:
+                    response = await asyncio.to_thread(
+                        self.bedrock_manager.invoke_agent,
+                        user_prompt,
+                        settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
+                        settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
+                        session_id
+                    )
+                    print(f"\nSmart Report Analyst: {response.get('final_response', response)}\n")
             except KeyboardInterrupt:
                 print("\nGoodbye!")
                 break
