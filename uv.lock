@@ -2920,6 +2920,7 @@ dependencies = [
     { name = "openai-agents" },
     { name = "pandas" },
     { name = "pydantic-core" },
+    { name = "pydantic-settings" },
     { name = "pyjwt" },
     { name = "pyparsing" },
     { name = "pytest" },
@@ -2928,6 +2929,7 @@ dependencies = [
     { name = "reportlab" },
     { name = "requests" },
     { name = "ruff" },
+    { name = "strands-agents" },
     { name = "streamlit" },
     { name = "typing-extensions" },
     { name = "typing-inspection" },
@@ -2945,6 +2947,7 @@ requires-dist = [
     { name = "openai-agents", specifier = ">=0.2.10" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pydantic-core", specifier = ">=2.41.1" },
+    { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "pyjwt", specifier = "==2.10.1" },
     { name = "pyparsing", specifier = "==3.2.3" },
     { name = "pytest", specifier = ">=9.0.2" },
@@ -2953,6 +2956,7 @@ requires-dist = [
     { name = "reportlab", specifier = ">=4.4.10" },
     { name = "requests", specifier = "==2.32.5" },
     { name = "ruff", specifier = ">=0.15.1" },
+    { name = "strands-agents", specifier = ">=1.33.0" },
     { name = "streamlit", specifier = ">=1.55.0" },
     { name = "typing-extensions", specifier = "==4.15.0" },
     { name = "typing-inspection", specifier = ">=0.4.2" },
@@ -3000,6 +3004,29 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c4/68/79977123bb7be889ad680d79a40f339082c1978b5cfcf62c2d8d196873ac/starlette-0.52.1.tar.gz", hash = "sha256:834edd1b0a23167694292e94f597773bc3f89f362be6effee198165a35d62933", size = 2653702, upload-time = "2026-01-18T13:34:11.062Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/81/0d/13d1d239a25cbfb19e740db83143e95c772a1fe10202dda4b76792b114dd/starlette-0.52.1-py3-none-any.whl", hash = "sha256:0029d43eb3d273bc4f83a08720b4912ea4b071087a3b48db01b7c839f7954d74", size = 74272, upload-time = "2026-01-18T13:34:09.188Z" },
+]
+
+[[package]]
+name = "strands-agents"
+version = "1.33.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "boto3" },
+    { name = "botocore" },
+    { name = "docstring-parser" },
+    { name = "jsonschema" },
+    { name = "mcp" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation-threading" },
+    { name = "opentelemetry-sdk" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "typing-extensions" },
+    { name = "watchdog" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/26/af/76200d7fe69417ebfbf9d3b65c898609a7d74d98d288cce82ca4734591d2/strands_agents-1.33.0.tar.gz", hash = "sha256:1707ae217c2e2700caedafd22ed1d4385cefe90d3debffac4de20cce76cfa676", size = 776194, upload-time = "2026-03-24T19:17:42.046Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/99/b3056a03c7d6fb04c1d10afb8fa966b6a5fbce836e264faf663d136f69dd/strands_agents-1.33.0-py3-none-any.whl", hash = "sha256:037406bc86416d2ef3274658faacc35cb62fc5cc13b581d7049796b5e2cb6c33", size = 387070, upload-time = "2026-03-24T19:17:40.697Z" },
 ]
 
 [[package]]
@@ -3304,6 +3331,9 @@ version = "6.0.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/db/7d/7f3d619e951c88ed75c6037b246ddcf2d322812ee8ea189be89511721d54/watchdog-6.0.0.tar.gz", hash = "sha256:9ddf7c82fda3ae8e24decda1338ede66e1c99883db93711d8fb941eaa2d8c282", size = 131220, upload-time = "2024-11-01T14:07:13.037Z" }
 wheels = [
+    { url = "https://files.pythonhosted.org/packages/68/98/b0345cabdce2041a01293ba483333582891a3bd5769b08eceb0d406056ef/watchdog-6.0.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:490ab2ef84f11129844c23fb14ecf30ef3d8a6abafd3754a6f75ca1e6654136c", size = 96480, upload-time = "2024-11-01T14:06:42.952Z" },
+    { url = "https://files.pythonhosted.org/packages/85/83/cdf13902c626b28eedef7ec4f10745c52aad8a8fe7eb04ed7b1f111ca20e/watchdog-6.0.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:76aae96b00ae814b181bb25b1b98076d5fc84e8a53cd8885a318b42b6d3a5134", size = 88451, upload-time = "2024-11-01T14:06:45.084Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/c4/225c87bae08c8b9ec99030cd48ae9c4eca050a59bf5c2255853e18c87b50/watchdog-6.0.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:a175f755fc2279e0b7312c0035d52e27211a5bc39719dd529625b1930917345b", size = 89057, upload-time = "2024-11-01T14:06:47.324Z" },
     { url = "https://files.pythonhosted.org/packages/a9/c7/ca4bf3e518cb57a686b2feb4f55a1892fd9a3dd13f470fca14e00f80ea36/watchdog-6.0.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:7607498efa04a3542ae3e05e64da8202e58159aa1fa4acddf7678d34a35d4f13", size = 79079, upload-time = "2024-11-01T14:06:59.472Z" },
     { url = "https://files.pythonhosted.org/packages/5c/51/d46dc9332f9a647593c947b4b88e2381c8dfc0942d15b8edc0310fa4abb1/watchdog-6.0.0-py3-none-manylinux2014_armv7l.whl", hash = "sha256:9041567ee8953024c83343288ccc458fd0a2d811d6a0fd68c4c22609e3490379", size = 79078, upload-time = "2024-11-01T14:07:01.431Z" },
     { url = "https://files.pythonhosted.org/packages/d4/57/04edbf5e169cd318d5f07b4766fee38e825d64b6913ca157ca32d1a42267/watchdog-6.0.0-py3-none-manylinux2014_i686.whl", hash = "sha256:82dc3e3143c7e38ec49d61af98d6558288c415eac98486a5c581726e0737c00e", size = 79076, upload-time = "2024-11-01T14:07:02.568Z" },

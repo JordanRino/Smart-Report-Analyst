@@ -24,6 +24,8 @@ dependencies = [
     "chainlit>=2.10.0",
     "aiomysql>=0.3.2",
     "bcrypt>=5.0.0",
+    "strands-agents>=1.33.0",
+    "pydantic-settings>=2.0.0",
 ]
 
 [build-system]

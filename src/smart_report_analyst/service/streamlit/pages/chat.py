@@ -4,7 +4,8 @@ import logging
 
 import streamlit as st
 
-from smart_report_analyst.service.bedrock.manager import BedrockManager
+from smart_report_analyst.service.bedrock.agent_manager import BedrockManager
+from smart_report_analyst.service.strands.runner import run_strands_turn_sync
 
 from smart_report_analyst.service.streamlit.components import render_chat_input, render_conversation_history, render_export_button
 from smart_report_analyst.service.report_generation import generate_pdf
@@ -31,12 +32,19 @@ def handle_user_input(user_input: str):
         
         # Show loading indicator
         with st.spinner("Analyzing your request..."):
-            response = bedrock_manager.invoke_agent(
-                prompt=user_input,
-                agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
-                agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
-                session_id=session_id,
-            )
+            if settings.AGENT_BACKEND == "strands":
+                slim_history = [
+                    {"role": m["role"], "content": m["content"]}
+                    for m in UIState.get_conversation_history()
+                ]
+                response = run_strands_turn_sync(settings, slim_history)
+            else:
+                response = bedrock_manager.invoke_agent(
+                    prompt=user_input,
+                    agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
+                    agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
+                    session_id=session_id,
+                )
 
         tool_result = response.get("tool_result")
 
