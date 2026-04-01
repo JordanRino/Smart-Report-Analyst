@@ -224,8 +224,8 @@ class MySQLDataLayer(BaseDataLayer):
                     "userId": str(row["user_id"]),
                     "userIdentifier": str(row["user_id"]), 
                     "metadata": metadata,
-                    "createdAt": row["created_at"],
-                    "updatedAt": row["updated_at"],
+                    "createdAt": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
+                    "updatedAt": row["updated_at"].isoformat() if hasattr(row["updated_at"], "isoformat") else str(row["updated_at"])
                 }
             
     async def get_thread_author(self, thread_id: str) -> Optional[Dict[str, Any]]:
