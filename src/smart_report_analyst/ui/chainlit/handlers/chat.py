@@ -75,7 +75,7 @@ async def on_message(message: cl.Message):
     cl.user_session.set("chat_history", history)
 
     # response: Dict[str, Any] = {}
-    async with cl.Step(name="Bedrock Agent", type="assistant_message") as step:
+    async with cl.Step(name="Orchestrator Agent", type="assistant_message") as step:
         full_response = ""
         tool_result = {}
 
@@ -96,8 +96,13 @@ async def on_message(message: cl.Message):
                     if event["type"] == "chunk":
                         token = event["data"]
                         full_response += token
+                        await step.stream_token(token)
                     elif event["type"] == "tool_result":
                         tool_result = event["data"]
+                        formatted_tool_result = f"\n\n[Tool Result]\n{tool_result}"
+                        await step.stream_token(formatted_tool_result)
+
+                step.output = full_response
             else:
                 stream = bedrock_manager.invoke_agent_stream(
                     prompt=message.content,
@@ -109,10 +114,11 @@ async def on_message(message: cl.Message):
                     if event["type"] == "chunk":
                         token = event["data"]
                         full_response += token
-
+                        await step.stream_token(token)
                     elif event["type"] == "tool_result":
                         tool_result = event["data"]
-                
+                        formatted_tool_result = f"\n\n[Tool Result]\n{tool_result}"
+                        await step.stream_token(formatted_tool_result)
                 step.output = full_response
 
         except Exception as e:
