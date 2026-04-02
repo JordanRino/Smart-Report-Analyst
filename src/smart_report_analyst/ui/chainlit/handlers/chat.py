@@ -92,7 +92,7 @@ async def on_message(message: cl.Message):
         #     session_id=session_id,
         # )
             if settings.AGENT_BACKEND == "strands":
-                async for event in run_stream(settings, history):
+                async for event in run_stream(settings, history, session_id=str(thread_id)):
                     if event["type"] == "chunk":
                         token = event["data"]
                         full_response += token

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.bedrock.agent_manager import BedrockManager
-from smart_report_analyst.service.strands.runner import run_strands_turn_sync
+from smart_report_analyst.service.strands.runner import run_sync
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -35,7 +35,7 @@ class SmartReportAnalystApp:
 
                 if settings.AGENT_BACKEND == "strands":
                     strands_history.append({"role": "user", "content": user_prompt})
-                    response = await asyncio.to_thread(run_strands_turn_sync, settings, strands_history)
+                    response = await asyncio.to_thread(run_sync, settings, strands_history, session_id)
                     assistant_text = response.get("final_response", "")
                     strands_history.append({"role": "assistant", "content": assistant_text})
                     print(f"\nSmart Report Analyst: {assistant_text}\n")

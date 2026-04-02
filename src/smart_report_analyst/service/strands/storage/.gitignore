@@ -1,0 +1,4 @@
+# Persisted Strands session trees (session_*/); keep directory in git
+*
+!.gitignore
+!.gitkeep

@@ -20,9 +20,28 @@ def _validate_strands_settings(settings: Settings) -> None:
         raise ValueError("BEDROCK_KNOWLEDGE_BASE_ID is required when AGENT_BACKEND=strands")
 
 
+def _build_session_and_conversation_managers(
+    settings: Settings,
+    session_id: str,
+):
+    """Return (session_manager, conversation_manager_or_none)."""
+    from smart_report_analyst.service.strands.session import build_strands_session_manager
+
+    sm = build_strands_session_manager(settings, session_id)
+    cm = None
+    if settings.STRANDS_CONVERSATION_SUMMARY_ENABLED:
+        from smart_report_analyst.service.strands.conversation import (
+            build_strands_conversation_manager,
+        )
+
+        cm = build_strands_conversation_manager(settings)
+    return sm, cm
+
+
 async def run_stream(
     settings: Settings,
     history: list[dict[str, Any]],
+    session_id: str,
 ) -> AsyncIterator[dict[str, Any]]:
     """
     Async-iterate stream events compatible with Chainlit's chunk / tool_result handling.
@@ -33,7 +52,11 @@ async def run_stream(
     prior, user_text = split_history_for_turn(history)
     logger.info(
         "strands_stream_turn",
-        extra={"prior_turns": len(prior), "user_chars": len(user_text)},
+        extra={
+            "prior_turns": len(prior),
+            "user_chars": len(user_text),
+            "session_persistence": settings.STRANDS_SESSION_PERSISTENCE,
+        },
     )
     if not user_text.strip():
         yield {"type": "chunk", "data": "No user message to process."}
@@ -41,7 +64,18 @@ async def run_stream(
         return
 
     turn_state = StrandsTurnState()
-    agent = create_strands_agent(settings, turn_state, prior)
+    if settings.STRANDS_SESSION_PERSISTENCE:
+        sm, cm = _build_session_and_conversation_managers(settings, session_id)
+        agent = create_strands_agent(
+            settings,
+            turn_state,
+            [],
+            session_manager=sm,
+            conversation_manager=cm,
+        )
+    else:
+        agent = create_strands_agent(settings, turn_state, prior)
+
     last_result = None
     saw_text = False
 
@@ -66,13 +100,18 @@ async def run_stream(
 def run_sync(
     settings: Settings,
     history: list[dict[str, Any]],
+    session_id: str,
 ) -> dict[str, Any]:
     """Non-streaming turn for Streamlit / CLI."""
     _validate_strands_settings(settings)
     prior, user_text = split_history_for_turn(history)
     logger.info(
         "strands_complete_turn",
-        extra={"prior_turns": len(prior), "user_chars": len(user_text)},
+        extra={
+            "prior_turns": len(prior),
+            "user_chars": len(user_text),
+            "session_persistence": settings.STRANDS_SESSION_PERSISTENCE,
+        },
     )
     if not user_text.strip():
         return {
@@ -82,7 +121,18 @@ def run_sync(
         }
 
     turn_state = StrandsTurnState()
-    agent = create_strands_agent(settings, turn_state, prior)
+    if settings.STRANDS_SESSION_PERSISTENCE:
+        sm, cm = _build_session_and_conversation_managers(settings, session_id)
+        agent = create_strands_agent(
+            settings,
+            turn_state,
+            [],
+            session_manager=sm,
+            conversation_manager=cm,
+        )
+    else:
+        agent = create_strands_agent(settings, turn_state, prior)
+
     result = agent(user_text)
     final_text = str(result).strip()
     return {

@@ -101,6 +101,35 @@ class Settings(BaseSettings):
         description="Optional Lambda name for Strands execute_sql; falls back to STORE_SQL_LAMBDA_FUNCTION_NAME.",
         validation_alias="STRANDS_SQL_LAMBDA_FUNCTION_NAME",
     )
+
+    STRANDS_SESSION_PERSISTENCE: bool = Field(
+        default=False,
+        description="When True, Strands uses FileSessionManager; message history comes from session files only (session_id must match thread id for Chainlit).",
+        validation_alias="STRANDS_SESSION_PERSISTENCE",
+    )
+    STRANDS_SESSION_STORAGE_DIR: Optional[str] = Field(
+        default=None,
+        description="Base directory for Strands file sessions; defaults to package strands/storage/.",
+        validation_alias="STRANDS_SESSION_STORAGE_DIR",
+    )
+    STRANDS_CONVERSATION_SUMMARY_ENABLED: bool = Field(
+        default=False,
+        description="When True, use SummarizingConversationManager for context window control (typically with STRANDS_SESSION_PERSISTENCE).",
+        validation_alias="STRANDS_CONVERSATION_SUMMARY_ENABLED",
+    )
+    STRANDS_CONVERSATION_SUMMARY_RATIO: float = Field(
+        default=0.3,
+        ge=0.1,
+        le=0.8,
+        description="Fraction of messages to summarize when reducing context (Strands SummarizingConversationManager).",
+        validation_alias="STRANDS_CONVERSATION_SUMMARY_RATIO",
+    )
+    STRANDS_CONVERSATION_PRESERVE_RECENT_MESSAGES: int = Field(
+        default=10,
+        ge=1,
+        description="Minimum recent messages to keep verbatim before summarization.",
+        validation_alias="STRANDS_CONVERSATION_PRESERVE_RECENT_MESSAGES",
+    )
     MYSQL_HOST: Optional[str] = Field(
         default=None,
         description="The hostname of the MySQL database",
