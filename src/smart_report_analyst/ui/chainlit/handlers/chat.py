@@ -135,12 +135,6 @@ async def on_message(message: cl.Message):
 
         cl.user_session.set("chat_history", history)
 
-        cl.user_session.set("last_response", {
-            "final_response": full_response,
-            "tool_result": tool_result,
-        })
-        cl.user_session.set("last_tool_result", tool_result)
-
         elements = [] 
         if should_generate_report(tool_result): 
             # pdf_buffer = generate_pdf(tool_result, response.get("user_question", message.content)) 
@@ -152,12 +146,12 @@ async def on_message(message: cl.Message):
                 content=pdf_bytes, 
             )
             elements.append(report_file)
-
-        await cl.Message( 
-            content="I have generated a report for the records collected from executing the SQL", 
-            actions=_build_actions({
-                "final_response": full_response,
-                "tool_result": tool_result,
-            }),
-            elements=elements, 
-        ).send() 
+        if tool_result and elements:
+            await cl.Message( 
+                content="I have generated a report for the records collected from executing the SQL", 
+                actions=_build_actions({
+                    "final_response": full_response,
+                    "tool_result": tool_result,
+                }),
+                elements=elements, 
+            ).send() 
