@@ -6,10 +6,11 @@ from botocore.config import Config as BotocoreConfig
 
 from strands.models import BedrockModel
 
-from smart_report_analyst.config.settings import Settings
+from smart_report_analyst.config.settings import get_settings
 
 
-def build_bedrock_model(settings: Settings) -> BedrockModel:
+def build_bedrock_model() -> BedrockModel:
+    settings = get_settings()
     model_id = settings.BEDROCK_MODEL_ID
     if not model_id:
         raise ValueError("BEDROCK_MODEL_ID must be set when AGENT_BACKEND=strands.")

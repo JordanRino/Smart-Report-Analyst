@@ -181,10 +181,7 @@ Guidelines
 
 
 def create_strands_agent(
-    settings: Settings,
     turn_state: StrandsTurnState,
-    prior_messages: list[dict],
-    *,
     session_manager: Any | None = None,
     conversation_manager: Any | None = None,
 ) -> Agent:
@@ -194,8 +191,8 @@ def create_strands_agent(
     When ``session_manager`` is set (STRANDS_SESSION_PERSISTENCE), history is loaded from the
     session store; do not pass prior UI messages via ``prior_messages``.
     """
-    model = build_bedrock_model(settings)
-    tools = build_strands_tools(settings, turn_state)
+    model = build_bedrock_model()
+    tools = build_strands_tools(turn_state)
     system_prompt = INSTRUCTIONS.strip()
     kwargs: dict[str, Any] = {
         "model": model,

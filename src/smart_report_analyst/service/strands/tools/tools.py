@@ -9,7 +9,7 @@ from typing import Any
 
 from strands import tool
 
-from smart_report_analyst.config.settings import Settings
+from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.bedrock.kb_manager import KnowledgeBaseRetriever
 from smart_report_analyst.service.persistence.mysql.app_data_layer import app_data_layer
 
@@ -24,8 +24,10 @@ class StrandsTurnState:
     last_tool_result: dict = field(default_factory=dict)
 
 
-def build_strands_tools(settings: Settings, turn_state: StrandsTurnState) -> list:
+def build_strands_tools(turn_state: StrandsTurnState) -> list:
     """Build tool callables bound to settings and turn-scoped result capture."""
+    
+    settings = get_settings()
     kb = KnowledgeBaseRetriever(settings)
 
     @tool
