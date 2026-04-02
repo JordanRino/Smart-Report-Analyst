@@ -65,7 +65,7 @@ def _format_tool_result_for_display(tool_result: Dict[str, Any]) -> str:
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    thread_id = cl.user_session.get("thread_id")
+    thread_id = cl.context.session.thread_id
     bedrock_session_id = cl.user_session.get("bedrock_session_id")
 
     if not thread_id:
