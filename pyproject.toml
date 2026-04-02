@@ -26,6 +26,7 @@ dependencies = [
     "bcrypt>=5.0.0",
     "strands-agents>=1.33.0",
     "pydantic-settings>=2.0.0",
+    "bedrock-agentcore[strands-agents]>=1.6.0",
 ]
 
 [build-system]

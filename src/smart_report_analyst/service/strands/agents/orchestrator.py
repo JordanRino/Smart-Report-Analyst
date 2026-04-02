@@ -197,3 +197,65 @@ def create_strands_agent(
         messages=strands_messages,
         callback_handler=None,
     )
+# """Build Strands Agent with SRA system prompt and Summarizing Memory."""
+
+# from __future__ import annotations
+
+# import logging
+# from strands import Agent
+# from strands.agent.conversation_manager import SummarizingConversationManager
+
+# from smart_report_analyst.config.settings import Settings
+# from smart_report_analyst.service.bedrock.model_manager import build_bedrock_model
+# from smart_report_analyst.service.bedrock.session import AgentCoreMemorySessionManager
+# from smart_report_analyst.service.strands.tools import StrandsTurnState, build_strands_tools
+
+# logger = logging.getLogger(__name__)
+
+# # Domain-specific prompt to ensure SQL schemas and findings aren't lost during condensation
+# SUMMARIZATION_PROMPT = """
+# You are summarizing a technical data analysis session. Create a concise bullet-point summary that:
+# - Preserves specific table names, column names, and verified schema details.
+# - Captures key analytical findings (e.g., "Query confirmed 450 active loans in Florida").
+# - Notes successful SQL patterns or filters used to avoid redundant metadata lookups.
+# - Omits conversational filler; focus on technical state and data discovered.
+# Format as third-person technical bullet points.
+# """
+
+# # [Your original INSTRUCTIONS string remains here]
+# INSTRUCTIONS = """
+# Coordinator Agent for Smart Report Analyst (SRA)...
+# ...
+# """
+
+# def create_strands_agent(
+#     settings: Settings,
+#     turn_state: StrandsTurnState,
+#     session_manager: AgentCoreMemorySessionManager,
+# ) -> Agent:
+#     """
+#     Create an Agent that uses AWS AgentCore for long-term persistence 
+#     and Summarization for intelligent short-term context.
+#     """
+#     model = build_bedrock_model(settings)
+#     tools = build_strands_tools(settings, turn_state)
+#     system_prompt = INSTRUCTIONS.strip()
+    
+#     # 1. Setup the Brain Filter (Conversation Manager)
+#     # This prevents the "Context Overflow" crash while keeping the agent smart.
+#     conversation_manager = SummarizingConversationManager(
+#         summary_ratio=0.3,               # Condense 30% of history when limit is reached
+#         preserve_recent_messages=10,      # Keep the last 10 messages in high-fidelity
+#         summarization_system_prompt=SUMMARIZATION_PROMPT.strip()
+#     )
+
+#     # 2. Initialize the Agent
+#     # Notice: 'messages' is gone. The session_manager handles the history injection.
+#     return Agent(
+#         model=model,
+#         tools=tools,
+#         system_prompt=system_prompt,
+#         session_manager=session_manager,       # The "Hard Drive" (AWS Bedrock)
+#         conversation_manager=conversation_manager, # The "Context Gatekeeper"
+#         callback_handler=None,
+#     )
