@@ -31,6 +31,8 @@ async def on_chat_resume(thread):
     """
     Automatically restore a persisted thread for a returning user.
     """
+    thread_name = thread.get("name") or "New Chat"
+    
     cl.user_session.set("bedrock_session_id", f"br-{uuid.uuid4().hex}")
     
-    await cl.Message(content=f"Resumed: {thread.name or 'New Chat'}").send()
+    await cl.Message(content=f"Resumed: {thread_name}").send()
