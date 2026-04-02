@@ -37,7 +37,7 @@ def handle_user_input(user_input: str):
                     {"role": m["role"], "content": m["content"]}
                     for m in UIState.get_conversation_history()
                 ]
-                response = run_sync(settings, slim_history, session_id=session_id)
+                response = run_sync(user_input, session_id=session_id)
             else:
                 response = bedrock_manager.invoke_agent(
                     prompt=user_input,

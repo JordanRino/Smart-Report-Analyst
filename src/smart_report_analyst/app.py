@@ -35,7 +35,7 @@ class SmartReportAnalystApp:
 
                 if settings.AGENT_BACKEND == "strands":
                     strands_history.append({"role": "user", "content": user_prompt})
-                    response = await asyncio.to_thread(run_sync, settings, strands_history, session_id)
+                    response = await asyncio.to_thread(run_sync, user_prompt, session_id)
                     assistant_text = response.get("final_response", "")
                     strands_history.append({"role": "assistant", "content": assistant_text})
                     print(f"\nSmart Report Analyst: {assistant_text}\n")

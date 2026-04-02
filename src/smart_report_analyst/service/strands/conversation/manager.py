@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from strands.agent.conversation_manager import SummarizingConversationManager
 
-from smart_report_analyst.config.settings import Settings
+from smart_report_analyst.config.settings import get_settings
 
 SUMMARIZATION_SYSTEM_PROMPT = """
 You are summarizing a technical data analysis session. Create a concise bullet-point summary that:
@@ -16,7 +16,8 @@ Format as third-person technical bullet points.
 """
 
 
-def build_strands_conversation_manager(settings: Settings) -> SummarizingConversationManager:
+def build_strands_conversation_manager() -> SummarizingConversationManager:
+    settings = get_settings()
     return SummarizingConversationManager(
         summary_ratio=settings.STRANDS_CONVERSATION_SUMMARY_RATIO,
         preserve_recent_messages=settings.STRANDS_CONVERSATION_PRESERVE_RECENT_MESSAGES,

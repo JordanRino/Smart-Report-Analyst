@@ -102,20 +102,10 @@ class Settings(BaseSettings):
         validation_alias="STRANDS_SQL_LAMBDA_FUNCTION_NAME",
     )
 
-    STRANDS_SESSION_PERSISTENCE: bool = Field(
-        default=False,
-        description="When True, Strands uses FileSessionManager; message history comes from session files only (session_id must match thread id for Chainlit).",
-        validation_alias="STRANDS_SESSION_PERSISTENCE",
-    )
     STRANDS_SESSION_STORAGE_DIR: Optional[str] = Field(
         default=None,
-        description="Base directory for Strands file sessions; defaults to package strands/storage/.",
+        description="Base directory for Strands file sessions; defaults to package strands/session/storage/.",
         validation_alias="STRANDS_SESSION_STORAGE_DIR",
-    )
-    STRANDS_CONVERSATION_SUMMARY_ENABLED: bool = Field(
-        default=False,
-        description="When True, use SummarizingConversationManager for context window control (typically with STRANDS_SESSION_PERSISTENCE).",
-        validation_alias="STRANDS_CONVERSATION_SUMMARY_ENABLED",
     )
     STRANDS_CONVERSATION_SUMMARY_RATIO: float = Field(
         default=0.3,

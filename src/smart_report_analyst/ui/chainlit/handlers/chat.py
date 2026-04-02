@@ -80,19 +80,8 @@ async def on_message(message: cl.Message):
         tool_result = {}
 
         try:
-            # with cl.Step(name="Bedrock Agent", type="llm", show_input=True) as step:
-            #     step.input = message.content
-            #     current_step = cl.context.current_step
-
-        # response = await asyncio.to_thread(
-        #     bedrock_manager.invoke_agent,
-        #     prompt=message.content,
-        #     agent_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ID,
-        #     agent_alias_id=settings.SINGLE_COORDINATOR_BEDROCK_AGENT_ALIAS_ID,
-        #     session_id=session_id,
-        # )
             if settings.AGENT_BACKEND == "strands":
-                async for event in run_stream(settings, history, session_id=str(thread_id)):
+                async for event in run_stream(message.content, session_id=str(thread_id)):
                     if event["type"] == "chunk":
                         token = event["data"]
                         full_response += token
