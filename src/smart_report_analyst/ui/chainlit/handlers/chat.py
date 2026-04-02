@@ -51,6 +51,17 @@ def _build_actions(response: Dict[str, Any]) -> List[cl.Action]:
         )
     ]
 
+def _format_tool_result_for_display(tool_result: Dict[str, Any]) -> str:
+    """Format the tool result for better display in the chat."""
+    if not tool_result:
+        return ""
+
+    executed_sql = tool_result.get("executed_sql", "")
+    row_count = tool_result.get("row_count", 0)
+
+    formatted_result = f"\n\n[Calling tool to execute SQL]\nExecuted SQL:\n```\n{executed_sql}\n```\nRow Count: {row_count}"
+    
+    return formatted_result
 
 @cl.on_message
 async def on_message(message: cl.Message):
@@ -88,7 +99,7 @@ async def on_message(message: cl.Message):
                         await step.stream_token(token)
                     elif event["type"] == "tool_result":
                         tool_result = event["data"]
-                        formatted_tool_result = f"\n\n[Tool Result]\n{tool_result}"
+                        formatted_tool_result = _format_tool_result_for_display(tool_result)
                         await step.stream_token(formatted_tool_result)
 
                 step.output = full_response
@@ -106,7 +117,7 @@ async def on_message(message: cl.Message):
                         await step.stream_token(token)
                     elif event["type"] == "tool_result":
                         tool_result = event["data"]
-                        formatted_tool_result = f"\n\n[Tool Result]\n{tool_result}"
+                        formatted_tool_result = _format_tool_result_for_display(tool_result)
                         await step.stream_token(formatted_tool_result)
                 step.output = full_response
 

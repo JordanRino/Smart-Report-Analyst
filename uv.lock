@@ -327,30 +327,6 @@ wheels = [
 ]
 
 [[package]]
-name = "bedrock-agentcore"
-version = "1.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "boto3" },
-    { name = "botocore" },
-    { name = "pydantic" },
-    { name = "starlette" },
-    { name = "typing-extensions" },
-    { name = "urllib3" },
-    { name = "uvicorn" },
-    { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ca/f6/2884c954343e794e3419348f5ffb0276a26f57b30af11f9fe63c4ca535c0/bedrock_agentcore-1.6.0.tar.gz", hash = "sha256:7ea176c3226dc6af8c399a8f9abb58629948cd8ed8675ece9f2f32b94e861b92", size = 512010, upload-time = "2026-03-31T23:10:06.561Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a2/f8/bcf158979324f4f4d171588afffadb2154fa8499701290bfc7bdaf82bd3a/bedrock_agentcore-1.6.0-py3-none-any.whl", hash = "sha256:a4cd02f2bfb80fcc7a8c8835be8d55c778339f8286b071ac3aae579460dd2eb2", size = 164034, upload-time = "2026-03-31T23:10:04.902Z" },
-]
-
-[package.optional-dependencies]
-strands-agents = [
-    { name = "strands-agents" },
-]
-
-[[package]]
 name = "bidict"
 version = "0.23.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2937,7 +2913,6 @@ source = { editable = "." }
 dependencies = [
     { name = "aiomysql" },
     { name = "bcrypt" },
-    { name = "bedrock-agentcore", extra = ["strands-agents"] },
     { name = "boto3" },
     { name = "chainlit" },
     { name = "flask-session" },
@@ -2965,7 +2940,6 @@ dependencies = [
 requires-dist = [
     { name = "aiomysql", specifier = ">=0.3.2" },
     { name = "bcrypt", specifier = ">=5.0.0" },
-    { name = "bedrock-agentcore", extras = ["strands-agents"], specifier = ">=1.6.0" },
     { name = "boto3", specifier = ">=1.42.71" },
     { name = "chainlit", specifier = ">=2.10.0" },
     { name = "flask-session", specifier = "==0.8.0" },
