@@ -88,7 +88,7 @@ class AppDataLayer:
                 async with conn.cursor() as cur:
                     await cur.execute(
                         """
-                        INSERT INTO successful_queries (refined_user_question, executed_sql, created_at)
+                        INSERT INTO successful_queries (UserQuestion, GeneratedSQL, CreatedAt)
                         VALUES (%s, %s, NOW())
                         """,
                         (refined_user_question, executed_sql),
