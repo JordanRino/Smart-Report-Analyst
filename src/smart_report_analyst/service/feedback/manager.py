@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-def handle_positive_feedback(payload: dict):
+async def handle_positive_feedback(payload: dict):
     """
     Handles thumbs-up feedback.
 
@@ -53,7 +53,7 @@ def handle_positive_feedback(payload: dict):
         #     function_params=lambda_payload,
         # )
 
-        asyncio.run(app_data_layer.store_successful_query(refined_user_question, executed_sql))
+        await app_data_layer.store_successful_query(refined_user_question, executed_sql)
 
         return {"status": "success"}
 

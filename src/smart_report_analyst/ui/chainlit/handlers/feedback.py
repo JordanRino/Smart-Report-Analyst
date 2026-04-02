@@ -20,7 +20,7 @@ async def on_report_helpful(action: cl.Action):
     payload: Dict[str, Any] = action.payload or {}
 
     try:
-        result = await asyncio.to_thread(handle_positive_feedback, payload)
+        result = await handle_positive_feedback(payload)
 
         if isinstance(result, dict) and result.get("status") == "success":
             await cl.Message(content="👍 Thanks for your feedback!").send()
