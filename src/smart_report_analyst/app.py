@@ -56,7 +56,7 @@ class SmartReportAnalystApp:
                 print("Please try again or type 'exit' to quit.\n")
 
 
-    def run_streamlit():
+    def run_streamlit(self):
         """Start the Streamlit UI application via CLI."""
         
         logger.info("Starting Smart Report Analyst Streamlit UI")
@@ -71,7 +71,7 @@ class SmartReportAnalystApp:
             str(streamlit_file)
         ])
 
-    def run_chainlit():
+    def run_chainlit(self):
         """Start the Chainlit UI application via CLI."""
 
         logger.info("Starting Smart Report Analyst Chainlit UI")
@@ -85,7 +85,7 @@ class SmartReportAnalystApp:
             "-w"  # auto-reload (super useful for dev)
         ])
 
-    def run_copilot():
+    def run_copilot(self):
 
         import uvicorn
         from fastapi import FastAPI
