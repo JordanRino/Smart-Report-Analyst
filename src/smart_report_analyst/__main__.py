@@ -3,7 +3,9 @@ import argparse
 import sys
 import logging
 
-from smart_report_analyst.app import SmartReportAnalystApp, run_streamlit, run_chainlit
+from smart_report_analyst.app import SmartReportAnalystApp
+
+
 def main():
     """Main entry point that determines which mode to run.
     
@@ -34,14 +36,22 @@ def main():
         help="Run Chainlit UI",
     )
 
+    parser.add_argument(
+        "--copilot",
+        action="store_true",
+        help="Run CopilotKit/AG-UI Backend Server",
+    )
+
     args = parser.parse_args()
 
     app = SmartReportAnalystApp()
 
     if args.streamlit:
-        run_streamlit()
+        app.run_streamlit()
     elif args.chainlit:
-        run_chainlit()
+        app.run_chainlit()
+    elif args.copilot:
+        app.run_copilot()
     else:
         asyncio.run(app.run_cli())
 

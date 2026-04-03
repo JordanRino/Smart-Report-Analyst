@@ -56,31 +56,54 @@ class SmartReportAnalystApp:
                 print("Please try again or type 'exit' to quit.\n")
 
 
-def run_streamlit():
-    """Start the Streamlit UI application via CLI."""
+    def run_streamlit():
+        """Start the Streamlit UI application via CLI."""
+        
+        logger.info("Starting Smart Report Analyst Streamlit UI")
+
+        # Get absolute path to manager.py
+        streamlit_file = Path(__file__).parent / "service/streamlit/manager.py"
+
+        # Run Streamlit properly
+        subprocess.run([
+            "streamlit",
+            "run",
+            str(streamlit_file)
+        ])
+
+    def run_chainlit():
+        """Start the Chainlit UI application via CLI."""
+
+        logger.info("Starting Smart Report Analyst Chainlit UI")
+
+        chainlit_file = Path(__file__).parent / "ui/chainlit/manager.py"
+
+        subprocess.run([
+            "chainlit",
+            "run",
+            str(chainlit_file),
+            "-w"  # auto-reload (super useful for dev)
+        ])
+
+    def run_copilot():
+
+        import uvicorn
+        from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
+        from smart_report_analyst.routes.routes import router as api_router
+
+        app = FastAPI(title="Smart Report Analyst - Copilot API")
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["http://localhost:3000"], # Next.js port
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        app.include_router(api_router, prefix="/api")
     
-    logger.info("Starting Smart Report Analyst Streamlit UI")
+        print("Starting CopilotKit Backend on http://0.0.0.0:8000")
 
-    # Get absolute path to manager.py
-    streamlit_file = Path(__file__).parent / "service/streamlit/manager.py"
-
-    # Run Streamlit properly
-    subprocess.run([
-        "streamlit",
-        "run",
-        str(streamlit_file)
-    ])
-
-def run_chainlit():
-    """Start the Chainlit UI application via CLI."""
-
-    logger.info("Starting Smart Report Analyst Chainlit UI")
-
-    chainlit_file = Path(__file__).parent / "ui/chainlit/manager.py"
-
-    subprocess.run([
-        "chainlit",
-        "run",
-        str(chainlit_file),
-        "-w"  # auto-reload (super useful for dev)
-    ])
+        uvicorn.run(app, host="0.0.0.0", port=8000)

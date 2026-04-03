@@ -24,3 +24,14 @@ client_secret.json
 
 # Generated files (reports, uploads, etc.)
 .files/
+
+# Frontend (Node.js / Next.js)
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/build/
+frontend/.vercel/
+frontend/*.tsbuildinfo
+frontend/.env.local
+frontend/.env.*.local
+
