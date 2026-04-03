@@ -27,6 +27,9 @@ dependencies = [
     "strands-agents>=1.33.0",
     "pydantic-settings>=2.0.0",
     "copilotkit>=0.1.84",
+    "langgraph>=1.0.10",
+    "langgraph-checkpoint>=4.0.1",
+    "langgraph-sdk>=0.3.12",
 ]
 
 [build-system]
