@@ -10,8 +10,13 @@ from typing import Any, Optional
 from copilotkit.action import ActionDict
 from copilotkit.agent import Agent
 from copilotkit.protocol import (
+    action_execution_args,
+    action_execution_end,
+    action_execution_result,
+    action_execution_start,
     agent_state_message,
     emit_runtime_event,
+    emit_runtime_events,
     text_message_content,
     text_message_end,
     text_message_start,
@@ -19,8 +24,42 @@ from copilotkit.protocol import (
 from copilotkit.types import Message, MetaEvent
 
 from smart_report_analyst.service.strands.runner import run_stream
+from smart_report_analyst.service.strands.session.reader import get_copilot_state_for_thread
 
 logger = logging.getLogger(__name__)
+
+ACTION_EXECUTE_SQL = "execute_sql"
+
+
+def _yield_execute_sql_action_events(final_tool_result: dict[str, Any]):
+    """Emit CopilotKit ActionExecution NDJSON so useCopilotAction(execute_sql) can render SqlTable."""
+    if not final_tool_result or final_tool_result.get("error"):
+        return
+    executed = final_tool_result.get("executed_sql")
+    results = final_tool_result.get("results")
+    if executed is None or results is None:
+        return
+    if not isinstance(results, list):
+        results = list(results)
+
+    exec_id = str(uuid.uuid4())
+    args_obj = {"query": str(executed), "results": results}
+    args_json = json.dumps(args_obj, default=str)
+
+    yield emit_runtime_events(
+        action_execution_start(
+            action_execution_id=exec_id,
+            action_name=ACTION_EXECUTE_SQL,
+            parent_message_id=None,
+        ),
+        action_execution_args(action_execution_id=exec_id, args=args_json),
+        action_execution_end(action_execution_id=exec_id),
+        action_execution_result(
+            action_name=ACTION_EXECUTE_SQL,
+            action_execution_id=exec_id,
+            result=args_json,
+        ),
+    )
 
 
 def _message_role_str(msg: Message) -> str:
@@ -107,6 +146,9 @@ class StrandsCopilotAgent(Agent):
 
         yield emit_runtime_event(text_message_end(message_id=message_id))
 
+        for line in _yield_execute_sql_action_events(final_tool_result):
+            yield line
+
         yield emit_runtime_event(
             agent_state_message(
                 thread_id=thread_id,
@@ -125,16 +167,4 @@ class StrandsCopilotAgent(Agent):
         *,
         thread_id: str,
     ) -> dict[str, Any]:
-        if not thread_id:
-            return {
-                "threadId": "",
-                "threadExists": False,
-                "state": {},
-                "messages": [],
-            }
-        return {
-            "threadId": thread_id,
-            "threadExists": False,
-            "state": {},
-            "messages": [],
-        }
+        return get_copilot_state_for_thread(thread_id or "")

@@ -5,10 +5,11 @@ import { ActionRenderProps, useCopilotAction } from "@copilotkit/react-core";
 import { SqlTable } from "@/components/SqlTable";
 
 export function ChatInterface() {
-  const { activeThreadId } = useApp();
+  const { effectiveThreadId } = useApp();
 
   useCopilotAction({
     name: "execute_sql",
+    available: "frontend",
     description: "Executes SQL query on the SBA database",
     parameters: [
       { name: "query", type: "string", description: "The SQL query being executed" },
@@ -32,10 +33,10 @@ export function ChatInterface() {
   });
 
   return (
-    // The h-full ensures it fills the container in page.tsx
+    
     <div className="h-full w-full flex flex-col">
       <CopilotChat
-        key={activeThreadId || "new-chat"}
+        key={effectiveThreadId}
         instructions="Senior SBA Analyst. Always provide SQL results when asked. Be concise and professional."
         labels={{
           title: "SBA Loan Assistant",

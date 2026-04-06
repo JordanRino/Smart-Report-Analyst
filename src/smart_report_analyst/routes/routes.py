@@ -3,7 +3,7 @@ from copilotkit.integrations.fastapi import add_fastapi_endpoint
 from copilotkit import CopilotKitRemoteEndpoint
 
 from smart_report_analyst.service.strands.agent import StrandsCopilotAgent
-from smart_report_analyst.service.strands.session.manager import _resolved_storage_dir
+from smart_report_analyst.service.strands.session.reader import list_history_sessions
 
 router = APIRouter()
 
@@ -11,24 +11,10 @@ router = APIRouter()
 @router.get("/history")
 async def get_chat_history():
     """
-    Scans the Strands storage directory and returns a list of sessions.
-    This populates your Next.js HistorySidebar.
+    Lists Strands FileSessionManager sessions (``session_<id>/session.json``).
+    Used by the Next.js HistorySidebar; ``id`` matches CopilotKit ``threadId`` / Strands ``session_id``.
     """
-    storage_dir = _resolved_storage_dir()
-    history = []
-
-    if storage_dir.exists():
-        # Strands FileSessionManager saves files as {session_id}.json
-        for file in storage_dir.glob("*.json"):
-            history.append(
-                {
-                    "id": file.stem,
-                    "name": f"Analysis {file.stem[:8]}...",
-                }
-            )
-
-    # Sort by most recent (using file metadata or ID)
-    return sorted(history, key=lambda x: x["id"], reverse=True)
+    return list_history_sessions()
 
 
 add_fastapi_endpoint(
