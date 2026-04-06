@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         validation_alias="ENVIRONMENT",
     )
 
-    AGENT_BACKEND: Literal["bedrock_agent", "strands"] = Field(
+    AGENT_BACKEND: Literal["bedrock", "strands"] = Field(
         default="bedrock",
         description="LLM backend: managed Bedrock Agent (InvokeAgent) or Strands + BedrockModel.",
         validation_alias="AGENT_BACKEND",

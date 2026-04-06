@@ -1,11 +1,12 @@
+import { getApiPrefix } from "@/lib/env";
+
 // Define your types for strict TypeScript checking
 export interface ChatSession {
   id: string;
   name: string;
 }
 
-// Fallback to localhost if the environment variable isn't set
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const API_BASE_URL = getApiPrefix();
 
 export const api = {
   /**
