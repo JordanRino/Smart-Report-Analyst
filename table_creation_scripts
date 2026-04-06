@@ -230,6 +230,7 @@ CREATE TABLE successful_queries (
 
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    identifier VARCHAR(255) UNIQUE,         -- Add this for the UUID
     username VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255),
     role VARCHAR(50) DEFAULT 'user',
@@ -264,3 +265,22 @@ CREATE TABLE chat_messages (
     FOREIGN KEY (thread_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
 );
 
+CREATE TABLE chat_elements (
+    id VARCHAR(255) PRIMARY KEY,       -- Chainlit uses UUID strings for element IDs
+    session_id INT NOT NULL,           -- Links to chat_sessions(id)
+    for_id VARCHAR(255),               -- Links to the specific Message ID (usually a UUID string)
+    type VARCHAR(50) NOT NULL,         -- e.g., 'file', 'image', 'text'
+    name VARCHAR(255) NOT NULL,        -- The filename or display name
+    url TEXT,                          -- URL or path to the file
+    chainlit_key VARCHAR(255),         -- Internal Chainlit reference key
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Foreign key to ensure data integrity
+    FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+);
+
+
+INSERT INTO users (identifier, username, password_hash, role) 
+
+VALUES ('27e45b0b-2d13-11f1-ad06-0affddd336f1', 'admin', '$2b$12$9L7Wm3F8nYZOpmRpiEALn.BqgUnphVtM5jyLB9hiYgfcR4UobGwA.', 'admin');
