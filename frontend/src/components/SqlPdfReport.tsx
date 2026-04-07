@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getApiPrefix } from "@/lib/env";
 
 type Props = {
@@ -10,6 +10,25 @@ type Props = {
   refinedUserQuestion?: string;
   rowCount?: number;
 };
+
+/** Cheap fingerprint so we do not depend on ``results`` reference identity in the effect. */
+function resultsFingerprint(rows: unknown[]): string {
+  if (rows.length === 0) return "0";
+  try {
+    const first = JSON.stringify(rows[0]);
+    const last = rows.length > 1 ? JSON.stringify(rows[rows.length - 1]) : "";
+    return `${rows.length}:${first}:${last}`;
+  } catch {
+    return `${rows.length}:err`;
+  }
+}
+
+function isPdfType(blob: Blob): Promise<boolean> {
+  return blob.slice(0, 4).arrayBuffer().then((buf) => {
+    const b = new Uint8Array(buf);
+    return b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46;
+  });
+}
 
 /** Renders CopilotKit ``execute_sql`` completion: fetches PDF from API, download + preview. */
 export function SqlPdfReport({
@@ -22,24 +41,29 @@ export function SqlPdfReport({
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fetchedKey = useRef<string | null>(null);
+  /** Set only after a successful blob → object URL (avoids Strict Mode / dedupe deadlock). */
+  const succeededKeyRef = useRef<string | null>(null);
+
+  const fetchKey = useMemo(() => {
+    const rows = Array.isArray(results) ? results : [];
+    const fp = resultsFingerprint(rows);
+    return `${query}\0${fp}\0${refinedUserQuestion ?? ""}\0${rowCount ?? ""}`;
+  }, [query, results, refinedUserQuestion, rowCount]);
 
   useEffect(() => {
     if (status !== "complete") {
-      fetchedKey.current = null;
+      succeededKeyRef.current = null;
       return;
     }
     const rows = Array.isArray(results) ? results : [];
-    const key = `${query}\0${rows.length}\0${refinedUserQuestion ?? ""}`;
     if (!query.trim() && rows.length === 0) {
       return;
     }
-    if (fetchedKey.current === key) {
+    if (succeededKeyRef.current === fetchKey) {
       return;
     }
-    fetchedKey.current = key;
 
-    let cancelled = false;
+    const ac = new AbortController();
     setLoading(true);
     setError(null);
     setPdfUrl(null);
@@ -57,6 +81,7 @@ export function SqlPdfReport({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
+          signal: ac.signal,
         });
         const ct = res.headers.get("content-type") || "";
         if (!res.ok) {
@@ -74,30 +99,37 @@ export function SqlPdfReport({
               /* ignore */
             }
           }
-          if (!cancelled) setError(msg);
-          return;
-        }
-        if (!ct.includes("application/pdf")) {
-          if (!cancelled) setError("Server did not return a PDF");
+          if (!ac.signal.aborted) setError(msg);
           return;
         }
         const blob = await res.blob();
-        if (cancelled) return;
+        if (ac.signal.aborted) return;
+        const pdfOk =
+          ct.includes("application/pdf") || (await isPdfType(blob));
+        if (!pdfOk) {
+          if (!ac.signal.aborted) setError("Server did not return a PDF");
+          return;
+        }
         const url = URL.createObjectURL(blob);
+        if (ac.signal.aborted) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        succeededKeyRef.current = fetchKey;
         setPdfUrl(url);
       } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Network error");
-        }
+        if (ac.signal.aborted) return;
+        setError(e instanceof Error ? e.message : "Network error");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!ac.signal.aborted) setLoading(false);
       }
     })();
 
     return () => {
-      cancelled = true;
+      ac.abort();
+      setLoading(false);
     };
-  }, [status, query, results, refinedUserQuestion, rowCount]);
+  }, [status, fetchKey]);
 
   useEffect(() => {
     return () => {
