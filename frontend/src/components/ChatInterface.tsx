@@ -1,8 +1,9 @@
 "use client";
+
 import { useApp } from "@/context/AppContext";
 import { CopilotChat } from "@copilotkit/react-ui";
 import { ActionRenderProps, useCopilotAction } from "@copilotkit/react-core";
-import { SqlTable } from "@/components/SqlTable";
+import { SqlPdfReport } from "@/components/SqlPdfReport";
 
 export function ChatInterface() {
   const { effectiveThreadId } = useApp();
@@ -14,26 +15,50 @@ export function ChatInterface() {
     parameters: [
       { name: "query", type: "string", description: "The SQL query being executed" },
       { name: "results", type: "object", description: "The JSON results from the database" },
+      {
+        name: "refined_user_question",
+        type: "string",
+        description: "Short title for the analytical question",
+      },
+      {
+        name: "row_count",
+        type: "number",
+        description: "Number of rows returned",
+      },
     ],
-    render: ({ status, args }: ActionRenderProps<
-        [
+    render: ({
+      status,
+      args,
+    }: ActionRenderProps<
+      [
         { name: "query"; type: "string"; description: string },
-        { name: "results"; type: "object"; description: string }
-        ]
+        { name: "results"; type: "object"; description: string },
+        { name: "refined_user_question"; type: "string"; description: string },
+        { name: "row_count"; type: "number"; description: string },
+      ]
     >): React.ReactElement => {
-            const results = Array.isArray(args.results) ? (args.results as any[]) : [];
-            if (status === "inProgress") {
-                return <div className="p-4 ...">Running SQL...</div>;
-            }
-            if (status === "complete") {
-                return <SqlTable data={results} query={args.query} />;
-            }
-            return <></>;
-        },
+      const results = Array.isArray(args.results) ? (args.results as unknown[]) : [];
+      const rq =
+        typeof args.refined_user_question === "string"
+          ? args.refined_user_question
+          : undefined;
+      const rc =
+        typeof args.row_count === "number" && !Number.isNaN(args.row_count)
+          ? args.row_count
+          : undefined;
+      return (
+        <SqlPdfReport
+          status={status}
+          query={typeof args.query === "string" ? args.query : ""}
+          results={results}
+          refinedUserQuestion={rq}
+          rowCount={rc}
+        />
+      );
+    },
   });
 
   return (
-    
     <div className="flex h-full min-h-0 w-full flex-col">
       <CopilotChat
         key={effectiveThreadId}
@@ -42,7 +67,6 @@ export function ChatInterface() {
           title: "SBA Loan Assistant",
           initial: "Hello! I can help you analyze SBA loan data. What would you like to see?",
         }}
-        // In "Chatbot-first" mode, we usually disable the pop-out behavior
         className="min-h-0 flex-1"
       />
     </div>

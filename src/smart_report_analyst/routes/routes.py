@@ -8,7 +8,7 @@ from copilotkit.integrations.fastapi import (
 )
 from copilotkit.sdk import CopilotKitContext
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from smart_report_analyst.integrations.agui_stream import (
     agui_run_finished,
@@ -17,6 +17,12 @@ from smart_report_analyst.integrations.agui_stream import (
 from smart_report_analyst.integrations.copilotkit import (
     CopilotKitRemoteEndpointAguiAgentsMap,
     patch_copilotkit_info_html_for_agent_map,
+)
+from smart_report_analyst.service.report_generation.report_pdf import (
+    ReportPdfClientError,
+    ReportPdfRequest,
+    ReportPdfServerError,
+    render_sql_report_pdf,
 )
 from smart_report_analyst.service.strands.agent import StrandsCopilotAgent
 from smart_report_analyst.service.strands.session.reader import list_history_sessions
@@ -51,6 +57,21 @@ async def copilotkit_runtime_info(request: Request):
         },
     )
     return await handle_info(sdk=_copilot_sdk, context=context, as_html=False)
+
+
+@router.post("/reports/pdf", tags=["reports"])
+async def create_report_pdf(body: ReportPdfRequest):
+    try:
+        pdf_bytes, content_disposition = render_sql_report_pdf(body)
+    except ReportPdfClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ReportPdfServerError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": content_disposition},
+    )
 
 
 @router.get("/history")

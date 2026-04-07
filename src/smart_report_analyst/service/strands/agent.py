@@ -48,7 +48,12 @@ def _yield_execute_sql_tool_events(
 
     tool_call_id = str(uuid.uuid4())
     result_message_id = str(uuid.uuid4())
-    args_obj = {"query": str(executed), "results": results}
+    args_obj = {
+        "query": str(executed),
+        "results": results,
+        "refined_user_question": final_tool_result.get("refined_user_question"),
+        "row_count": final_tool_result.get("row_count"),
+    }
     args_json = json.dumps(args_obj, default=str)
 
     yield agui_tool_call_start(
