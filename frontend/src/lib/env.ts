@@ -22,3 +22,9 @@ export function getApiPrefix(): string {
 export function getCopilotRuntimeUrl(): string {
   return `${getPublicApiBase()}/api/copilotkit/`;
 }
+
+/** Copilot Cloud / Premium public key; observability hooks require this on `<CopilotKit>`. */
+export function getCopilotPublicApiKey(): string | undefined {
+  const k = process.env.NEXT_PUBLIC_COPILOT_PUBLIC_API_KEY?.trim();
+  return k || undefined;
+}

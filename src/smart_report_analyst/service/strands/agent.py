@@ -23,8 +23,13 @@ from smart_report_analyst.integrations.agui_stream import (
     agui_tool_call_result,
     agui_tool_call_start,
 )
+from smart_report_analyst.service.feedback.snapshot_index import (
+    register_feedback_snapshot,
+)
 from smart_report_analyst.service.strands.runner import run_stream
-from smart_report_analyst.service.strands.session.reader import get_copilot_state_for_thread
+from smart_report_analyst.service.strands.session.reader import (
+    get_copilot_state_for_thread,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +38,7 @@ ACTION_EXECUTE_SQL = "execute_sql"
 
 def _yield_execute_sql_tool_events(
     *,
+    thread_id: str,
     final_tool_result: dict[str, Any],
     parent_message_id: str,
 ) -> Iterator[str]:
@@ -53,8 +59,20 @@ def _yield_execute_sql_tool_events(
         "results": results,
         "refined_user_question": final_tool_result.get("refined_user_question"),
         "row_count": final_tool_result.get("row_count"),
+        "to_store": final_tool_result.get("to_store"),
     }
     args_json = json.dumps(args_obj, default=str)
+
+    # Thumbs-up resolves SQL via (thread_id, message_id); register both assistant and tool-result ids.
+    _fb_snap = {
+        "refined_user_question": str(
+            final_tool_result.get("refined_user_question") or ""
+        ),
+        "executed_sql": str(executed),
+        "to_store": bool(final_tool_result.get("to_store")),
+    }
+    register_feedback_snapshot(thread_id, parent_message_id, _fb_snap)
+    register_feedback_snapshot(thread_id, result_message_id, _fb_snap)
 
     yield agui_tool_call_start(
         tool_call_id=tool_call_id,
@@ -163,6 +181,7 @@ class StrandsCopilotAgent(Agent):
         yield agui_text_message_end(message_id=message_id)
 
         for frame in _yield_execute_sql_tool_events(
+            thread_id=thread_id,
             final_tool_result=final_tool_result,
             parent_message_id=message_id,
         ):

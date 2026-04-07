@@ -1,12 +1,32 @@
 "use client";
 
+import { useCallback } from "react";
 import { useApp } from "@/context/AppContext";
 import { CopilotChat } from "@copilotkit/react-ui";
 import { ActionRenderProps, useCopilotAction } from "@copilotkit/react-core";
 import { SqlPdfReport } from "@/components/SqlPdfReport";
+import { getApiPrefix } from "@/lib/env";
 
 export function ChatInterface() {
   const { effectiveThreadId } = useApp();
+
+  /** CopilotKit message thumbs-up → server snapshot (agent.py) → MySQL successful_queries. */
+  const onFeedbackGiven = useCallback(
+    (messageId: string, type: "thumbsUp" | "thumbsDown") => {
+      if (type !== "thumbsUp" || !effectiveThreadId) return;
+      void fetch(`${getApiPrefix()}/feedback/positive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message_id: messageId,
+          thread_id: effectiveThreadId,
+        }),
+      }).catch(() => {
+        /* ignore network errors for observability hook */
+      });
+    },
+    [effectiveThreadId],
+  );
 
   useCopilotAction({
     name: "execute_sql",
@@ -25,6 +45,11 @@ export function ChatInterface() {
         type: "number",
         description: "Number of rows returned",
       },
+      {
+        name: "to_store",
+        type: "boolean",
+        description: "Whether this question/SQL pair is eligible for examples storage",
+      },
     ],
     render: ({
       status,
@@ -35,6 +60,7 @@ export function ChatInterface() {
         { name: "results"; type: "object"; description: string },
         { name: "refined_user_question"; type: "string"; description: string },
         { name: "row_count"; type: "number"; description: string },
+        { name: "to_store"; type: "boolean"; description: string },
       ]
     >): React.ReactElement => {
       const results = Array.isArray(args.results) ? (args.results as unknown[]) : [];
@@ -68,6 +94,7 @@ export function ChatInterface() {
           initial: "Hello! I can help you analyze SBA loan data. What would you like to see?",
         }}
         className="min-h-0 flex-1"
+        observabilityHooks={{ onFeedbackGiven }}
       />
     </div>
   );

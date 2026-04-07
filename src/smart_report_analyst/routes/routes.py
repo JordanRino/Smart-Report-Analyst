@@ -1,5 +1,5 @@
 import uuid
-from typing import cast
+from typing import Any, cast
 
 from copilotkit.integrations.fastapi import (
     add_fastapi_endpoint,
@@ -9,7 +9,6 @@ from copilotkit.integrations.fastapi import (
 from copilotkit.sdk import CopilotKitContext
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-
 from smart_report_analyst.integrations.agui_stream import (
     agui_run_finished,
     agui_run_started,
@@ -18,6 +17,9 @@ from smart_report_analyst.integrations.copilotkit import (
     CopilotKitRemoteEndpointAguiAgentsMap,
     patch_copilotkit_info_html_for_agent_map,
 )
+from smart_report_analyst.service.feedback import handle_positive_feedback
+from smart_report_analyst.service.feedback.schemas import FeedbackPositiveBody
+from smart_report_analyst.service.feedback.snapshot_index import pop_feedback_snapshot
 from smart_report_analyst.service.report_generation.report_pdf import (
     ReportPdfClientError,
     ReportPdfRequest,
@@ -30,6 +32,7 @@ from smart_report_analyst.service.strands.session.reader import list_history_ses
 patch_copilotkit_info_html_for_agent_map()
 
 router = APIRouter()
+
 
 _copilot_sdk = CopilotKitRemoteEndpointAguiAgentsMap(
     agents=[
@@ -57,6 +60,31 @@ async def copilotkit_runtime_info(request: Request):
         },
     )
     return await handle_info(sdk=_copilot_sdk, context=context, as_html=False)
+
+
+@router.post("/feedback/positive", tags=["feedback"])
+async def feedback_positive(body: FeedbackPositiveBody) -> dict[str, Any]:
+    """
+    Persist helpful feedback (same rules as Chainlit ``report_helpful``).
+
+    - CopilotKit thumbs-up: body ``{ message_id, thread_id }`` (snapshot from last ``execute_sql`` emit).
+    - Explicit save: ``{ refined_user_question, executed_sql, to_store? }`` (e.g. SqlPdfReport Helpful).
+    """
+    if body.message_id and body.thread_id:
+        snap = pop_feedback_snapshot(body.thread_id.strip(), body.message_id.strip())
+        if not snap:
+            raise HTTPException(
+                status_code=404,
+                detail="No snapshot for this message (unknown id, wrong thread, or expired).",
+            )
+        payload = snap
+    else:
+        payload = {
+            "refined_user_question": (body.refined_user_question or "").strip(),
+            "executed_sql": (body.executed_sql or "").strip(),
+            "to_store": True if body.to_store is None else body.to_store,
+        }
+    return await handle_positive_feedback(payload)
 
 
 @router.post("/reports/pdf", tags=["reports"])
