@@ -1,28 +1,28 @@
-"""CopilotKit Agent adapter: maps Strands `run_stream` to CopilotKit runtime protocol (NDJSON)."""
+"""CopilotKit Agent adapter: maps Strands ``run_stream`` to AG-UI + SSE (CopilotKit HTTP)."""
 
 from __future__ import annotations
 
 import json
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from copilotkit.action import ActionDict
 from copilotkit.agent import Agent
-from copilotkit.protocol import (
-    action_execution_args,
-    action_execution_end,
-    action_execution_result,
-    action_execution_start,
-    agent_state_message,
-    emit_runtime_event,
-    emit_runtime_events,
-    text_message_content,
-    text_message_end,
-    text_message_start,
-)
 from copilotkit.types import Message, MetaEvent
 
+from smart_report_analyst.integrations.agui_stream import (
+    agui_run_finished,
+    agui_run_started,
+    agui_state_snapshot,
+    agui_text_message_content,
+    agui_text_message_end,
+    agui_text_message_start,
+    agui_tool_call_args,
+    agui_tool_call_end,
+    agui_tool_call_result,
+    agui_tool_call_start,
+)
 from smart_report_analyst.service.strands.runner import run_stream
 from smart_report_analyst.service.strands.session.reader import get_copilot_state_for_thread
 
@@ -31,8 +31,12 @@ logger = logging.getLogger(__name__)
 ACTION_EXECUTE_SQL = "execute_sql"
 
 
-def _yield_execute_sql_action_events(final_tool_result: dict[str, Any]):
-    """Emit CopilotKit ActionExecution NDJSON so useCopilotAction(execute_sql) can render SqlTable."""
+def _yield_execute_sql_tool_events(
+    *,
+    final_tool_result: dict[str, Any],
+    parent_message_id: str,
+) -> Iterator[str]:
+    """AG-UI tool-call SSE frames so ``useCopilotAction(execute_sql)`` receives ActionExecution (via client bridge)."""
     if not final_tool_result or final_tool_result.get("error"):
         return
     executed = final_tool_result.get("executed_sql")
@@ -42,23 +46,22 @@ def _yield_execute_sql_action_events(final_tool_result: dict[str, Any]):
     if not isinstance(results, list):
         results = list(results)
 
-    exec_id = str(uuid.uuid4())
+    tool_call_id = str(uuid.uuid4())
+    result_message_id = str(uuid.uuid4())
     args_obj = {"query": str(executed), "results": results}
     args_json = json.dumps(args_obj, default=str)
 
-    yield emit_runtime_events(
-        action_execution_start(
-            action_execution_id=exec_id,
-            action_name=ACTION_EXECUTE_SQL,
-            parent_message_id=None,
-        ),
-        action_execution_args(action_execution_id=exec_id, args=args_json),
-        action_execution_end(action_execution_id=exec_id),
-        action_execution_result(
-            action_name=ACTION_EXECUTE_SQL,
-            action_execution_id=exec_id,
-            result=args_json,
-        ),
+    yield agui_tool_call_start(
+        tool_call_id=tool_call_id,
+        tool_call_name=ACTION_EXECUTE_SQL,
+        parent_message_id=parent_message_id,
+    )
+    yield agui_tool_call_args(tool_call_id=tool_call_id, delta=args_json)
+    yield agui_tool_call_end(tool_call_id=tool_call_id)
+    yield agui_tool_call_result(
+        message_id=result_message_id,
+        tool_call_id=tool_call_id,
+        content=args_json,
     )
 
 
@@ -91,8 +94,8 @@ def _last_user_text(messages: list[Message]) -> str:
 
 class StrandsCopilotAgent(Agent):
     """
-    Streams assistant text using `run_stream` and emits CopilotKit runtime events
-    (TextMessageStart/Content/End + final AgentStateMessage with tool_result JSON).
+    Streams assistant text using ``run_stream`` and emits AG-UI events over SSE
+    (``data:`` lines + ``\\n\\n``), ending with ``STATE_SNAPSHOT`` and ``RUN_FINISHED``.
     """
 
     def __init__(
@@ -123,9 +126,8 @@ class StrandsCopilotAgent(Agent):
         run_id = str(uuid.uuid4())
         message_id = str(uuid.uuid4())
 
-        yield emit_runtime_event(
-            text_message_start(message_id=message_id, parent_message_id=None)
-        )
+        yield agui_run_started(thread_id=thread_id, run_id=run_id)
+        yield agui_text_message_start(message_id=message_id, role="assistant")
 
         final_tool_result: dict[str, Any] = {}
         try:
@@ -134,10 +136,11 @@ class StrandsCopilotAgent(Agent):
                 if et == "chunk":
                     data = event.get("data", "")
                     if isinstance(data, str) and data:
-                        print (f"\n\n\n\n\n Data: {data}")
-                        yield emit_runtime_event(
-                            text_message_content(message_id=message_id, content=data)
+                        frame = agui_text_message_content(
+                            message_id=message_id, delta=data
                         )
+                        if frame:
+                            yield frame
                 elif et == "tool_result":
                     raw = event.get("data")
                     final_tool_result = raw if isinstance(raw, dict) else {}
@@ -145,23 +148,18 @@ class StrandsCopilotAgent(Agent):
             logger.exception("strands_copilotkit_agent_execute")
             raise
 
-        yield emit_runtime_event(text_message_end(message_id=message_id))
+        yield agui_text_message_end(message_id=message_id)
 
-        for line in _yield_execute_sql_action_events(final_tool_result):
-            yield line
+        for frame in _yield_execute_sql_tool_events(
+            final_tool_result=final_tool_result,
+            parent_message_id=message_id,
+        ):
+            yield frame
 
-        yield emit_runtime_event(
-            agent_state_message(
-                thread_id=thread_id,
-                agent_name=self.name,
-                node_name="__end__",
-                run_id=run_id,
-                active=False,
-                role="assistant",
-                state=json.dumps({"tool_result": final_tool_result}),
-                running=False,
-            )
+        yield agui_state_snapshot(
+            snapshot={"tool_result": final_tool_result},
         )
+        yield agui_run_finished(thread_id=thread_id, run_id=run_id)
 
     async def get_state(
         self,
