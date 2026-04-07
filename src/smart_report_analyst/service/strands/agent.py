@@ -134,6 +134,7 @@ class StrandsCopilotAgent(Agent):
                 if et == "chunk":
                     data = event.get("data", "")
                     if isinstance(data, str) and data:
+                        print (f"\n\n\n\n\n Data: {data}")
                         yield emit_runtime_event(
                             text_message_content(message_id=message_id, content=data)
                         )

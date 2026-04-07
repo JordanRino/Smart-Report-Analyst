@@ -23,6 +23,10 @@ def main():
         force=True
     )
 
+    # Root DEBUG would otherwise flood stdout with botocore parsers / HTTP wire logs.
+    for _name in ("botocore", "boto3", "urllib3", "s3transfer"):
+        logging.getLogger(_name).setLevel(logging.WARNING)
+
     parser = argparse.ArgumentParser(description="Smart Report Analyst")
     parser.add_argument(
         "--streamlit",
