@@ -34,7 +34,7 @@ export function ChatInterface() {
 
   return (
     
-    <div className="h-full w-full flex flex-col">
+    <div className="flex h-full min-h-0 w-full flex-col">
       <CopilotChat
         key={effectiveThreadId}
         instructions="Senior SBA Analyst. Always provide SQL results when asked. Be concise and professional."
@@ -43,7 +43,7 @@ export function ChatInterface() {
           initial: "Hello! I can help you analyze SBA loan data. What would you like to see?",
         }}
         // In "Chatbot-first" mode, we usually disable the pop-out behavior
-        className="flex-1" 
+        className="min-h-0 flex-1"
       />
     </div>
   );

@@ -124,6 +124,13 @@ class StrandsCopilotAgent(Agent):
 
         user_message = _last_user_text(messages)
         run_id = str(uuid.uuid4())
+
+        if not user_message.strip():
+            yield agui_run_started(thread_id=thread_id, run_id=run_id)
+            yield agui_state_snapshot(snapshot={"tool_result": {}})
+            yield agui_run_finished(thread_id=thread_id, run_id=run_id)
+            return
+
         message_id = str(uuid.uuid4())
 
         yield agui_run_started(thread_id=thread_id, run_id=run_id)

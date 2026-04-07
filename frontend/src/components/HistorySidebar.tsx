@@ -33,7 +33,7 @@ export function HistorySidebar() {
           onClick={() => startNewConversation()}
           className="flex items-center justify-center gap-2 w-full py-2 bg-zinc-100 text-zinc-900 rounded-lg font-medium hover:bg-white transition"
         >
-          <PlusIcon size={16} /> New Analysis
+          <PlusIcon size={16} /> New Chat
         </button>
       </div>
 

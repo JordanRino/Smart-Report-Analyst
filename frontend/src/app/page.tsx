@@ -4,7 +4,7 @@ import { HistorySidebar } from "@/components/HistorySidebar";
 import { ChatInterface } from "@/components/ChatInterface";
 
 export default function Home() {
-  const { activeThreadId, startNewConversation } = useApp();
+  const { activeThreadId } = useApp();
 
   return (
     <div className="flex h-screen w-full bg-zinc-50 overflow-hidden">
@@ -13,26 +13,19 @@ export default function Home() {
       <HistorySidebar />
 
       {/* CENTER: The Chatbot App (Flexible Space) */}
-      <main className="flex-1 flex flex-col min-w-0 bg-white">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
         
         {/* Sub-Header */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b px-8">
+        <header className="flex h-16 shrink-0 items-center border-b px-8">
           <div className="flex items-center gap-3">
             <div className="w-2.5 h-2.5 bg-blue-600 rounded-full animate-pulse" />
             <h1 className="text-sm font-bold text-zinc-900 uppercase tracking-widest">
-              {activeThreadId ? `Session: ${activeThreadId.slice(0,8)}` : "New Analysis"}
+              {activeThreadId ? `Session: ${activeThreadId.slice(0,8)}` : "New Chat"}
             </h1>
           </div>
-          
-          <button 
-            onClick={() => startNewConversation()}
-            className="rounded-lg bg-zinc-100 px-4 py-2 text-xs font-bold text-zinc-900 transition-all hover:bg-zinc-200 active:scale-95"
-          >
-            + RESET SESSION
-          </button>
         </header>
 
-        <div className="flex-1 relative overflow-hidden">
+        <div className="relative min-h-0 flex-1 overflow-hidden">
           <ChatInterface />
         </div>
 
