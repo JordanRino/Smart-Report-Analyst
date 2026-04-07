@@ -13,7 +13,7 @@ set -e
 
 # --- uv (Python) ---
 # curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
+# export PATH="$HOME/.local/bin:$PATH"
 # uv sync
 
 # --- Node.js for Next.js (Amazon Linux 2023 example; adjust for your AMI) ---
@@ -44,11 +44,13 @@ EC2_IP="<REPLACE_WITH_PRIVATE_OR_REACHABLE_IP>"
 # --- Backend (FastAPI + CopilotKit) — bind all interfaces; port from env or default 8000 ---
 # CLI --host / --port override COPILOT_* from .env for this process only.
 # nohup uv run smart-report-analyst --copilot --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
+# tail -n 20 backend.log
 
 # --- Frontend (Next.js dev) — listen on all interfaces so VPN/browser can hit :3000 ---
 # cd frontend
 # npm ci
 # nohup npm run dev -- -H 0.0.0.0 -p 3000 > ../frontend.log 2>&1 &
+# tail -n 20 frontend.log
 # cd ..
 
 # Open in browser (HTTP, not HTTPS, unless you terminate TLS in front):
