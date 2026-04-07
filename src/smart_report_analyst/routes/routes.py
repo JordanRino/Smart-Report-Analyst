@@ -1,9 +1,13 @@
 from fastapi import APIRouter
 from copilotkit.integrations.fastapi import add_fastapi_endpoint
-from copilotkit import CopilotKitRemoteEndpoint
-
+from smart_report_analyst.integrations.copilotkit import (
+    CopilotKitRemoteEndpointAguiAgentsMap,
+    patch_copilotkit_info_html_for_agent_map,
+)
 from smart_report_analyst.service.strands.agent import StrandsCopilotAgent
 from smart_report_analyst.service.strands.session.reader import list_history_sessions
+
+patch_copilotkit_info_html_for_agent_map()
 
 router = APIRouter()
 
@@ -19,7 +23,7 @@ async def get_chat_history():
 
 add_fastapi_endpoint(
     router,
-    CopilotKitRemoteEndpoint(
+    CopilotKitRemoteEndpointAguiAgentsMap(
         agents=[
             StrandsCopilotAgent(
                 name="loan_report_analyst_agent",

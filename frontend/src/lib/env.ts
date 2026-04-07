@@ -20,5 +20,5 @@ export function getApiPrefix(): string {
 }
 
 export function getCopilotRuntimeUrl(): string {
-  return `${getPublicApiBase()}/api/copilotkit`;
+  return `${getPublicApiBase()}/api/copilotkit/`;
 }
