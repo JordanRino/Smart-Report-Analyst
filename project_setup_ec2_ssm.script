@@ -38,6 +38,7 @@ EC2_IP="<REPLACE_WITH_PRIVATE_OR_REACHABLE_IP>"
 # --- Frontend env: must be the API URL as seen FROM THE BROWSER ---
 # cp frontend/.env.example frontend/.env
 # Set: NEXT_PUBLIC_API_BASE_URL=http://${EC2_IP}:8000
+# Set (hostname only, no http/port): NEXT_ALLOWED_DEV_ORIGINS=${EC2_IP}
 # npm install is run inside frontend/
 
 # --- Backend (FastAPI + CopilotKit) — bind all interfaces; port from env or default 8000 ---
