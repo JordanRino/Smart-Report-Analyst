@@ -5,16 +5,23 @@ from __future__ import annotations
 import logging
 from typing import Any, AsyncIterator
 
-from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.strands.agents import create_strands_agent
 from smart_report_analyst.service.strands.tools import StrandsTurnState
-from smart_report_analyst.service.strands.utils import split_history_for_turn
 from smart_report_analyst.service.strands.session import build_strands_session_manager
 from smart_report_analyst.service.strands.conversation import (build_strands_conversation_manager,)
 from smart_report_analyst.config.settings import get_settings
 
 
 logger = logging.getLogger(__name__)
+
+
+def _summarize_stream_event_for_log(event: Any) -> str:
+    """Compact shape description for diagnostics (no token dumps)."""
+    if isinstance(event, dict):
+        keys = list(event.keys())
+        types_sample = {k: type(event[k]).__name__ for k in keys[:10]}
+        return f"dict n_keys={len(keys)} keys_head={keys[:10]!r} value_types={types_sample!r}"
+    return f"{type(event).__module__}.{type(event).__qualname__}"
 
 
 def _validate_strands_settings() -> None:
@@ -57,9 +64,16 @@ async def run_stream(
 
     last_result = None
     saw_text = False
+    stream_event_count = 0
+    non_dict_event_count = 0
+    first_event_summary: str | None = None
 
     async for event in agent.stream_async(user_message):
+        stream_event_count += 1
+        if first_event_summary is None:
+            first_event_summary = _summarize_stream_event_for_log(event)
         if not isinstance(event, dict):
+            non_dict_event_count += 1
             continue
         data = event.get("data")
         if isinstance(data, str) and data:
@@ -68,10 +82,22 @@ async def run_stream(
         if "result" in event:
             last_result = event.get("result")
 
+    emitted_text_chunk = saw_text
     if not saw_text and last_result is not None:
         fallback = str(last_result).strip()
         if fallback:
             yield {"type": "chunk", "data": fallback}
+            emitted_text_chunk = True
+
+    if not emitted_text_chunk:
+        logger.warning(
+            "strands_stream_async_no_string_chunks: expected dict events with non-empty str "
+            "'data' (see run_stream); events=%s non_dict=%s first=%s had_result_key=%s",
+            stream_event_count,
+            non_dict_event_count,
+            first_event_summary,
+            last_result is not None,
+        )
 
     yield {"type": "tool_result", "data": turn_state.last_tool_result or {}}
 
