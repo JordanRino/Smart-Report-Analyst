@@ -1,21 +1,59 @@
-cd ~
-sudo yum update -y
-sudo yum install git -y
+#!/usr/bin/env bash
+# Reference steps for Amazon Linux EC2 (SSM Session Manager). Edit paths and EC2_IP as needed.
+# Run commands inside a shell on the instance (not necessarily as a single script file).
 
-git --version
+set -e
 
-cd ~/projects
-git clone https://github.com/JordanRino/Smart-Report-Analyst.git smart-report-analyst
-cd smart-report-analyst
+# --- One-time: system + repo ---
+# sudo yum update -y
+# sudo yum install -y git
+# mkdir -p ~/projects && cd ~/projects
+# git clone https://github.com/JordanRino/Smart-Report-Analyst.git smart-report-analyst
+# cd smart-report-analyst
 
+# --- uv (Python) ---
+# curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+# uv sync
 
-cd ~/projects/smart-report-analyst
+# --- Node.js for Next.js (Amazon Linux 2023 example; adjust for your AMI) ---
+# curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+# sudo yum install -y nodejs
+# node --version
 
-to install  uv - curl -LsSf https://astral.sh/uv/install.sh | sh
+# =============================================================================
+# CopilotKit UI (Strands agent): backend + frontend on EC2
+# =============================================================================
+# Replace with this instance's IPv4 (the same host:port you type in the browser).
+# Example: EC2_IP="10.0.1.42"
+EC2_IP="<REPLACE_WITH_PRIVATE_OR_REACHABLE_IP>"
 
-if uv is already installed - export PATH="$HOME/.local/bin:$PATH"
+# --- Root .env (repo root): copy from .env.example and set at least AGENT_BACKEND, AWS, MySQL, etc.
+# Add or merge these lines so the API accepts your Next.js origin:
+#   COPILOT_CORS_ORIGINS=http://${EC2_IP}:3000,http://localhost:3000
+# Optional bind (defaults are already 0.0.0.0:8000):
+#   COPILOT_HOST=0.0.0.0
+#   COPILOT_PORT=8000
 
-uv sync
+# --- Frontend env: must be the API URL as seen FROM THE BROWSER ---
+# cp frontend/.env.example frontend/.env
+# Set: NEXT_PUBLIC_API_BASE_URL=http://${EC2_IP}:8000
+# npm install is run inside frontend/
 
-chainlit run src/smart_report_analyst/ui/chainlit/manager.py --host 0.0.0.0 --port 8000
+# --- Backend (FastAPI + CopilotKit) — bind all interfaces; port from env or default 8000 ---
+# CLI --host / --port override COPILOT_* from .env for this process only.
+# nohup uv run smart-report-analyst --copilot --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
 
+# --- Frontend (Next.js dev) — listen on all interfaces so VPN/browser can hit :3000 ---
+# cd frontend
+# npm ci
+# nohup npm run dev -- -H 0.0.0.0 -p 3000 > ../frontend.log 2>&1 &
+# cd ..
+
+# Open in browser (HTTP, not HTTPS, unless you terminate TLS in front):
+#   http://${EC2_IP}:3000
+
+# =============================================================================
+# Optional: Chainlit (different app entrypoint)
+# =============================================================================
+# chainlit run src/smart_report_analyst/ui/chainlit/manager.py --host 0.0.0.0 --port 8000

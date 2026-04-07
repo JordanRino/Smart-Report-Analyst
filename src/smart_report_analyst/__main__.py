@@ -41,6 +41,19 @@ def main():
         action="store_true",
         help="Run CopilotKit/AG-UI Backend Server",
     )
+    parser.add_argument(
+        "--host",
+        default=None,
+        metavar="ADDR",
+        help="Bind address for --copilot (overrides COPILOT_HOST; default from env or 0.0.0.0)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        metavar="PORT",
+        help="Bind port for --copilot (overrides COPILOT_PORT; default from env or 8000)",
+    )
 
     args = parser.parse_args()
 
@@ -51,7 +64,7 @@ def main():
     elif args.chainlit:
         app.run_chainlit()
     elif args.copilot:
-        app.run_copilot()
+        app.run_copilot(host=args.host, port=args.port)
     else:
         asyncio.run(app.run_cli())
 

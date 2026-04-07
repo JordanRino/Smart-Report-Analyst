@@ -85,7 +85,7 @@ class SmartReportAnalystApp:
             "-w"  # auto-reload (super useful for dev)
         ])
 
-    def run_copilot(self):
+    def run_copilot(self, host: str | None = None, port: int | None = None):
 
         import uvicorn
         from fastapi import FastAPI
@@ -94,16 +94,20 @@ class SmartReportAnalystApp:
 
         app = FastAPI(title="Smart Report Analyst - Copilot API")
 
+        origins = settings.copilot_cors_origin_list
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["http://localhost:3000"], # Next.js port
+            allow_origins=origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
         )
 
         app.include_router(api_router, prefix="/api")
-    
-        print("Starting CopilotKit Backend on http://0.0.0.0:8000")
 
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+        bind_host = host if host is not None else settings.COPILOT_HOST
+        bind_port = port if port is not None else settings.COPILOT_PORT
+        print(f"Starting CopilotKit Backend on http://{bind_host}:{bind_port}")
+        print(f"CORS allow_origins: {origins}")
+
+        uvicorn.run(app, host=bind_host, port=bind_port)

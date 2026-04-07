@@ -146,6 +146,23 @@ class Settings(BaseSettings):
         validation_alias="MYSQL_DB"
     )
 
+    COPILOT_HOST: str = Field(
+        default="0.0.0.0",
+        description="Bind address for FastAPI when running --copilot.",
+        validation_alias="COPILOT_HOST",
+    )
+    COPILOT_PORT: int = Field(
+        default=8000,
+        ge=1,
+        le=65535,
+        description="Bind port for FastAPI when running --copilot.",
+        validation_alias="COPILOT_PORT",
+    )
+    COPILOT_CORS_ORIGINS: str = Field(
+        default="http://localhost:3000",
+        description="Comma-separated browser Origins allowed to call the Copilot API (Next.js URL(s)).",
+        validation_alias="COPILOT_CORS_ORIGINS",
+    )
 
      # Pydantic Settings configuration
     model_config = SettingsConfigDict(
@@ -169,6 +186,11 @@ class Settings(BaseSettings):
     def is_staging(self) -> bool:
         """Check if running in staging/test."""
         return self.environment.lower() in {"staging", "stage", "test"}
+
+    @property
+    def copilot_cors_origin_list(self) -> list[str]:
+        """Parsed COPILOT_CORS_ORIGINS for FastAPI CORSMiddleware."""
+        return [o.strip() for o in self.COPILOT_CORS_ORIGINS.split(",") if o.strip()]
 
 
 
