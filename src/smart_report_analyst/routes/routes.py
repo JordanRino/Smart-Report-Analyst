@@ -9,10 +9,7 @@ from copilotkit.integrations.fastapi import (
 from copilotkit.sdk import CopilotKitContext
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from smart_report_analyst.integrations.agui_stream import (
-    agui_run_finished,
-    agui_run_started,
-)
+from smart_report_analyst.integrations.agui_stream import iter_connect_replay_frames
 from smart_report_analyst.integrations.copilotkit import (
     CopilotKitRemoteEndpointAguiAgentsMap,
     patch_copilotkit_info_html_for_agent_map,
@@ -161,10 +158,10 @@ async def copilotkit_agent_connect(agent_name: str, request: Request):
     run_id = body.get("runId") or str(uuid.uuid4())
 
     async def agui_connect_chunks():
-        yield agui_run_started(thread_id=thread_id, run_id=run_id)
-        yield agui_run_finished(thread_id=thread_id, run_id=run_id)
+        for frame in iter_connect_replay_frames(thread_id=thread_id, run_id=run_id):
+            yield frame
 
-    return StreamingResponse(agui_connect_chunks(), media_type="application/json")
+    return StreamingResponse(agui_connect_chunks(), media_type="text/event-stream")
 
 
 @router.post("/copilotkit/agent/{agent_name}/stop/{thread_id_param}")
