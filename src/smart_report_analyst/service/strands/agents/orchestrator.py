@@ -9,8 +9,6 @@ from strands import Agent
 
 from smart_report_analyst.service.bedrock.model_manager import build_bedrock_model
 from smart_report_analyst.service.strands.tools import StrandsTurnState, build_strands_tools
-from smart_report_analyst.service.strands.utils import chainlit_history_to_strands_messages
-
 logger = logging.getLogger(__name__)
 
 INSTRUCTIONS = """
@@ -188,13 +186,12 @@ def create_strands_agent(
     turn_state: StrandsTurnState,
     session_manager: Any | None = None,
     conversation_manager: Any | None = None,
-    prior_messages: list[dict[str, Any]] | None = None,
 ) -> Agent:
     """
     Create an Agent for one turn.
 
     When ``session_manager`` is set (STRANDS_SESSION_PERSISTENCE), history is loaded from the
-    session store; do not pass prior UI messages via ``prior_messages``.
+    session store.
     """
     model = build_bedrock_model()
     tools = build_strands_tools(turn_state)
@@ -208,8 +205,6 @@ def create_strands_agent(
     if session_manager is not None:
         kwargs["session_manager"] = session_manager
         kwargs["messages"] = None
-    else:
-        kwargs["messages"] = chainlit_history_to_strands_messages(prior_messages or [])
     if conversation_manager is not None:
         kwargs["conversation_manager"] = conversation_manager
     return Agent(**kwargs)
