@@ -10,6 +10,7 @@ from smart_report_analyst.service.strands.tools import StrandsTurnState
 from smart_report_analyst.service.strands.session import build_strands_session_manager
 from smart_report_analyst.service.strands.conversation import (build_strands_conversation_manager,)
 from smart_report_analyst.config.settings import get_settings
+from smart_report_analyst.service.strands.guardrails import classify_user_message
 
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,16 @@ async def run_stream(
     )
     if not user_message.strip():
         yield {"type": "chunk", "data": "No user message to process."}
+        yield {"type": "tool_result", "data": {}}
+        return
+
+    topic = classify_user_message(user_message)
+    if not topic.allowed:
+        logger.info(
+            "strands_topic_guardrail_block",
+            extra={"reason": topic.reason, "detail": topic.detail},
+        )
+        yield {"type": "chunk", "data": topic.refusal_message}
         yield {"type": "tool_result", "data": {}}
         return
 
@@ -119,6 +130,18 @@ def run_sync(
         return {
             "final_response": "No user message to process.",
             "user_question": "",
+            "tool_result": {},
+        }
+
+    topic = classify_user_message(user_message)
+    if not topic.allowed:
+        logger.info(
+            "strands_topic_guardrail_block",
+            extra={"reason": topic.reason, "detail": topic.detail},
+        )
+        return {
+            "final_response": topic.refusal_message,
+            "user_question": user_message,
             "tool_result": {},
         }
 

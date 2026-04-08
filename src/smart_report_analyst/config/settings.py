@@ -31,6 +31,42 @@ class Settings(BaseSettings):
         validation_alias="BEDROCK_MODEL_ID",
     )
 
+    BEDROCK_GUARDRAIL_ID: Optional[str] = Field(
+        default=None,
+        description="Optional Bedrock guardrail ID for Strands BedrockModel (InvokeModel guardrails).",
+        validation_alias="BEDROCK_GUARDRAIL_ID",
+    )
+    BEDROCK_GUARDRAIL_VERSION: Optional[str] = Field(
+        default=None,
+        description="Guardrail version (e.g. DRAFT or numeric). Defaults to DRAFT when ID is set but version is empty.",
+        validation_alias="BEDROCK_GUARDRAIL_VERSION",
+    )
+    BEDROCK_GUARDRAIL_TRACE: Optional[str] = Field(
+        default=None,
+        description="Guardrail trace: enabled, disabled, or enabled_full (Strands BedrockModel).",
+        validation_alias="BEDROCK_GUARDRAIL_TRACE",
+    )
+    BEDROCK_GUARDRAIL_REDACT_INPUT: Optional[bool] = Field(
+        default=None,
+        description="When true, Strands overwrites blocked user input in history (see Strands BedrockModel).",
+        validation_alias="BEDROCK_GUARDRAIL_REDACT_INPUT",
+    )
+    BEDROCK_GUARDRAIL_REDACT_INPUT_MESSAGE: Optional[str] = Field(
+        default=None,
+        description="Replacement text when guardrail_redact_input is used.",
+        validation_alias="BEDROCK_GUARDRAIL_REDACT_INPUT_MESSAGE",
+    )
+    BEDROCK_GUARDRAIL_REDACT_OUTPUT: Optional[bool] = Field(
+        default=None,
+        description="When true, Strands can redact model output on guardrail intervention.",
+        validation_alias="BEDROCK_GUARDRAIL_REDACT_OUTPUT",
+    )
+    BEDROCK_GUARDRAIL_REDACT_OUTPUT_MESSAGE: Optional[str] = Field(
+        default=None,
+        description="Replacement text when guardrail_redact_output is used.",
+        validation_alias="BEDROCK_GUARDRAIL_REDACT_OUTPUT_MESSAGE",
+    )
+
     RETRIEVAL_MAX_RESULTS: int = Field(
         default=10,
         ge=1,

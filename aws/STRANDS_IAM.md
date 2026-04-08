@@ -9,6 +9,14 @@ When `AGENT_BACKEND=strands`, the application principal (user, role, or task rol
 
 Scope `Resource` to your model or inference profile ARNs in production.
 
+### Bedrock Guardrails (optional)
+
+When `BEDROCK_GUARDRAIL_ID` is set, inference attaches that guardrail. The runtime role typically also needs:
+
+- `bedrock:ApplyGuardrail` on the guardrail resource ARN (see [Guardrails permissions](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions.html)).
+
+Creating or editing guardrails in AWS uses APIs such as `bedrock:CreateGuardrail` (see [Boto3 `create_guardrail`](https://docs.aws.amazon.com/boto3/latest/reference/services/bedrock/client/create_guardrail.html)); those are operator/console permissions, not required on the app role unless your deployment creates guardrails from code.
+
 ## Knowledge Base retrieve
 
 Retriever logic lives in `smart_report_analyst.service.bedrock.kb_manager`. The app calls `bedrock-agent-runtime:Retrieve` with `BEDROCK_KNOWLEDGE_BASE_ID`.
