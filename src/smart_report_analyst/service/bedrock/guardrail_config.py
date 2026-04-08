@@ -13,7 +13,7 @@ from typing import Any
 import boto3
 from botocore.client import BaseClient
 
-from smart_report_analyst.config.settings import Settings, get_settings
+from smart_report_analyst.config.settings import get_settings
 
 # Align with ``strands.guardrails.taxonomy.OFF_TOPIC_REFUSAL_MESSAGE`` (Bedrock blocked prompt text).
 _DEFAULT_BLOCKED_INPUT = (
@@ -32,12 +32,13 @@ def bedrock_control_plane_client(*, region_name: str) -> BaseClient:
     return boto3.client("bedrock", region_name=region_name)
 
 
-def bedrock_model_guardrail_kwargs(settings: Settings) -> dict[str, Any]:
+def bedrock_model_guardrail_kwargs() -> dict[str, Any]:
     """
     Build kwargs for ``BedrockModel(..., **kwargs)`` when guardrail env vars are set.
 
     If ``BEDROCK_GUARDRAIL_ID`` is unset, returns an empty dict (no Bedrock guardrail).
     """
+    settings = get_settings()
     gid = (settings.BEDROCK_GUARDRAIL_ID or "").strip()
     if not gid:
         return {}
@@ -170,10 +171,9 @@ def create_sra_guardrail(
 
 
 def create_sra_guardrail_from_settings(
-    settings: Settings | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Convenience: build control client from settings and create the default guardrail."""
-    s = settings or get_settings()
-    client = bedrock_control_plane_client(region_name=s.AWS_REGION)
+    settings = get_settings()
+    client = bedrock_control_plane_client(region_name=settings.AWS_REGION)
     return create_sra_guardrail(client, **kwargs)

@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock
 
 from smart_report_analyst.config.settings import Settings
-from smart_report_analyst.service.bedrock.bedrock_guardrail_config import (
+from smart_report_analyst.service.bedrock.guardrail_config import (
     bedrock_model_guardrail_kwargs,
     build_sra_guardrail_create_kwargs,
     create_sra_guardrail,
@@ -17,7 +17,7 @@ def test_empty_kwargs_without_guardrail_id():
             "BEDROCK_GUARDRAIL_VERSION": None,
         }
     )
-    assert bedrock_model_guardrail_kwargs(s) == {}
+    assert bedrock_model_guardrail_kwargs() == {}
 
 
 def test_kwargs_with_id_and_defaults():
@@ -27,7 +27,7 @@ def test_kwargs_with_id_and_defaults():
             "BEDROCK_GUARDRAIL_VERSION": None,
         }
     )
-    kw = bedrock_model_guardrail_kwargs(s)
+    kw = bedrock_model_guardrail_kwargs()
     assert kw["guardrail_id"] == "abc123"
     assert kw["guardrail_version"] == "DRAFT"
 
@@ -44,7 +44,7 @@ def test_kwargs_passes_trace_and_redact():
             "BEDROCK_GUARDRAIL_REDACT_OUTPUT_MESSAGE": "",
         }
     )
-    kw = bedrock_model_guardrail_kwargs(s)
+    kw = bedrock_model_guardrail_kwargs()
     assert kw["guardrail_trace"] == "enabled_full"
     assert kw["guardrail_redact_input"] is True
     assert kw["guardrail_redact_input_message"] == "blocked"

@@ -1,6 +1,6 @@
 """Topic and safety guardrails for Strands turns (rules + optional Bedrock guardrails)."""
 
-from smart_report_analyst.service.bedrock.bedrock_guardrail_config import (
+from smart_report_analyst.service.bedrock.guardrail_config import (
     bedrock_model_guardrail_kwargs,
 )
 from smart_report_analyst.service.strands.guardrails.classifier import (
