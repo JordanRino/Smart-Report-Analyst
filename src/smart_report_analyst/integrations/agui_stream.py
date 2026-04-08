@@ -12,7 +12,12 @@ with ``RUN_STARTED`` and end with ``RUN_FINISHED`` or ``RUN_ERROR`` (``verifyEve
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
+
+from smart_report_analyst.service.strands.session.reader import (
+    get_copilot_state_for_thread,
+)
 
 
 def agui_sse_event(payload: dict[str, Any]) -> str:
@@ -103,9 +108,42 @@ def agui_state_snapshot(*, snapshot: dict[str, Any]) -> str:
     return agui_sse_event({"type": "STATE_SNAPSHOT", "snapshot": snapshot})
 
 
+def iter_connect_replay_frames(*, thread_id: str, run_id: str) -> Iterator[str]:
+    """
+    Emit AG-UI events so CopilotKit ``connectAgent`` hydrates the chat from disk.
+
+    The client clears messages before connect; without replay, history threads stayed empty.
+    """
+    payload = get_copilot_state_for_thread(thread_id)
+    yield agui_run_started(thread_id=thread_id, run_id=run_id)
+
+    for msg in payload.get("messages") or []:
+        if not isinstance(msg, dict) or msg.get("type") != "TextMessage":
+            continue
+        message_id = msg.get("id")
+        role = msg.get("role")
+        if message_id is None or role not in ("user", "assistant"):
+            continue
+        content = msg.get("content", "")
+        if not isinstance(content, str):
+            content = str(content)
+        mid = str(message_id)
+        yield agui_text_message_start(message_id=mid, role=str(role))
+        if content:
+            yield agui_text_message_content(message_id=mid, delta=content)
+        yield agui_text_message_end(message_id=mid)
+
+    state = payload.get("state")
+    if not isinstance(state, dict):
+        state = {}
+    yield agui_state_snapshot(snapshot=state)
+    yield agui_run_finished(thread_id=thread_id, run_id=run_id)
+
+
 __all__ = [
     "agui_run_finished",
     "agui_run_started",
+    "iter_connect_replay_frames",
     "agui_sse_event",
     "agui_state_snapshot",
     "agui_text_message_content",
