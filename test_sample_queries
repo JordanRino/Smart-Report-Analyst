@@ -76,7 +76,7 @@ AND MIS_Status = 'P I F';
 Tests: SUM
 
 Question:
-What is the total loan amount disbursed by each bank?
+    What is the total loan amount disbursed by each bank?
 
 Expected SQL pattern:
 

@@ -12,6 +12,7 @@ set -e
 # cd smart-report-analyst
 
 # --- uv (Python) ---
+# cd ~/projects/smart-report-analyst
 # curl -LsSf https://astral.sh/uv/install.sh | sh
 # export PATH="$HOME/.local/bin:$PATH"
 # uv sync
@@ -43,6 +44,7 @@ EC2_IP="<REPLACE_WITH_PRIVATE_OR_REACHABLE_IP>"
 
 # --- Backend (FastAPI + CopilotKit) — bind all interfaces; port from env or default 8000 ---
 # CLI --host / --port override COPILOT_* from .env for this process only.
+# sudo netstat -tulpn | grep :8000
 # nohup uv run smart-report-analyst --copilot --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
 # tail -n 20 backend.log
 
@@ -50,8 +52,8 @@ EC2_IP="<REPLACE_WITH_PRIVATE_OR_REACHABLE_IP>"
 # cd frontend
 # npm ci
 # nohup npm run dev -- -H 0.0.0.0 -p 3000 > ../frontend.log 2>&1 &
-# tail -n 20 frontend.log
 # cd ..
+# tail -n 20 frontend.log
 
 # Open in browser (HTTP, not HTTPS, unless you terminate TLS in front):
 #   http://${EC2_IP}:3000

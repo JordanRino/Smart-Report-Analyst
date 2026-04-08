@@ -18,6 +18,9 @@ export function CopilotRuntimeProvider({ children }: { children: React.ReactNode
       threadId={effectiveThreadId}
       agent={COPILOT_AGENT_NAME}
       useSingleEndpoint={false}
+      properties={{
+        threadId: effectiveThreadId 
+      }}
     >
       {children}
     </CopilotKit>
