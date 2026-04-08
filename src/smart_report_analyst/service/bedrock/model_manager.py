@@ -23,7 +23,7 @@ def build_bedrock_model() -> BedrockModel:
         connect_timeout=10,
         read_timeout=120,
     )
-    guardrail_kwargs = bedrock_model_guardrail_kwargs(settings)
+    guardrail_kwargs = bedrock_model_guardrail_kwargs()
     return BedrockModel(
         model_id=model_id,
         region_name=settings.AWS_REGION,

@@ -17,7 +17,7 @@ from typing import Any
 import boto3
 from botocore.client import BaseClient
 
-from smart_report_analyst.config.settings import Settings, get_settings
+from smart_report_analyst.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -151,8 +151,6 @@ def build_sra_guardrail_create_request(
                         "Who should I vote for?",
                         "Give me tax advice for my LLC.",
                         "Should I buy Bitcoin?",
-                        "Explain global inflation trends.",
-                        "Write me a poem.",
                     ],
                     "type": "DENY",
                     "inputAction": "BLOCK",
@@ -170,7 +168,16 @@ def build_sra_guardrail_create_request(
                 _content_filter("SEXUAL"),
                 _content_filter("INSULTS"),
                 _content_filter("MISCONDUCT"),
-                _content_filter("PROMPT_ATTACK"),
+                # Manually define prompt attack to avoid the strength error
+                {
+                    "type": "PROMPT_ATTACK",
+                    "inputStrength": "MEDIUM",
+                    "outputStrength": "NONE", # This MUST be NONE
+                    "inputAction": "BLOCK",
+                    "outputAction": "NONE",  # Recommended as output check isn't applicable
+                    "inputEnabled": True,
+                    "outputEnabled": False, # Recommended
+                },
             ],
             "tierConfig": {"tierName": content_tier},
         },
@@ -233,7 +240,6 @@ def create_sra_guardrail(
 
 
 def get_or_create_sra_guardrail(
-    settings: Settings,
     *,
     client: BaseClient | None = None,
 ) -> GuardrailIdentity:
@@ -244,6 +250,7 @@ def get_or_create_sra_guardrail(
     """
     global _resolved_guardrail  # noqa: PLW0603 — intentional module singleton
 
+    settings = get_settings()
     if _resolved_guardrail is not None:
         return GuardrailIdentity(
             guardrail_id=_resolved_guardrail["guardrail_id"],
@@ -286,19 +293,20 @@ def get_or_create_sra_guardrail(
         return GuardrailIdentity(guardrail_id=gid, version=ver)
 
 
-def bedrock_model_guardrail_kwargs(settings: Settings) -> dict[str, Any]:
+def bedrock_model_guardrail_kwargs() -> dict[str, Any]:
     """
     Kwargs for Strands ``BedrockModel`` after resolving guardrail via get-or-create.
 
     Empty dict when ``BEDROCK_GUARDRAIL_ENABLED`` is false.
     """
+    settings = get_settings()
     if not settings.BEDROCK_GUARDRAIL_ENABLED:
         return {}
 
-    ident = get_or_create_sra_guardrail(settings)
+    sra_guardrail = get_or_create_sra_guardrail()
     out: dict[str, Any] = {
-        "guardrail_id": ident.guardrail_id,
-        "guardrail_version": ident.version,
+        "guardrail_id": sra_guardrail.guardrail_id,
+        "guardrail_version": sra_guardrail.version,
     }
 
     trace = (settings.BEDROCK_GUARDRAIL_TRACE or "").strip().lower()
@@ -328,13 +336,3 @@ def reset_guardrail_cache_for_tests() -> None:
 
 build_sra_guardrail_create_kwargs = build_sra_guardrail_create_request
 
-
-def create_sra_guardrail_from_settings(
-    settings: Settings | None = None,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    """Force ``create_guardrail`` (does not use get-or-create cache). Prefer ``get_or_create_sra_guardrail``."""
-    s = settings or get_settings()
-    client = bedrock_control_plane_client(region_name=s.AWS_REGION)
-    name = (s.BEDROCK_GUARDRAIL_NAME or DEFAULT_SRA_GUARDRAIL_NAME).strip()
-    return create_sra_guardrail(client, name=name, **kwargs)
