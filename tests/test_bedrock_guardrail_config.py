@@ -1,8 +1,12 @@
-"""Mapping settings → Strands BedrockModel guardrail kwargs."""
+"""Mapping settings → Strands BedrockModel guardrail kwargs and create_guardrail builders."""
+
+from unittest.mock import MagicMock
 
 from smart_report_analyst.config.settings import Settings
-from smart_report_analyst.service.strands.guardrails.bedrock_guardrail_config import (
+from smart_report_analyst.service.bedrock.bedrock_guardrail_config import (
     bedrock_model_guardrail_kwargs,
+    build_sra_guardrail_create_kwargs,
+    create_sra_guardrail,
 )
 
 
@@ -46,3 +50,30 @@ def test_kwargs_passes_trace_and_redact():
     assert kw["guardrail_redact_input_message"] == "blocked"
     assert kw["guardrail_redact_output"] is False
     assert "guardrail_redact_output_message" not in kw
+
+
+def test_build_sra_guardrail_create_kwargs_shape():
+    kw = build_sra_guardrail_create_kwargs(name="test-gr")
+    assert kw["name"] == "test-gr"
+    assert "blockedInputMessaging" in kw
+    assert "blockedOutputsMessaging" in kw
+    assert "topicPolicyConfig" in kw
+    assert "contentPolicyConfig" in kw
+    topics = kw["topicPolicyConfig"]["topicsConfig"]
+    assert len(topics) >= 1
+    assert topics[0]["type"] == "DENY"
+    filters = kw["contentPolicyConfig"]["filtersConfig"]
+    types = {f["type"] for f in filters}
+    assert "HATE" in types
+    assert "VIOLENCE" in types
+
+
+def test_create_sra_guardrail_calls_client():
+    client = MagicMock()
+    client.create_guardrail.return_value = {"guardrailId": "g1", "version": "DRAFT"}
+    out = create_sra_guardrail(client, name="custom")
+    assert out["guardrailId"] == "g1"
+    client.create_guardrail.assert_called_once()
+    call_kw = client.create_guardrail.call_args.kwargs
+    assert call_kw["name"] == "custom"
+    assert "topicPolicyConfig" in call_kw

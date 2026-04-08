@@ -7,7 +7,7 @@ from botocore.config import Config as BotocoreConfig
 from strands.models import BedrockModel
 
 from smart_report_analyst.config.settings import get_settings
-from smart_report_analyst.service.strands.guardrails.bedrock_guardrail_config import (
+from smart_report_analyst.service.bedrock.bedrock_guardrail_config import (
     bedrock_model_guardrail_kwargs,
 )
 

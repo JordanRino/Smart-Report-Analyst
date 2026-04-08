@@ -15,7 +15,9 @@ When `BEDROCK_GUARDRAIL_ID` is set, inference attaches that guardrail. The runti
 
 - `bedrock:ApplyGuardrail` on the guardrail resource ARN (see [Guardrails permissions](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions.html)).
 
-Creating or editing guardrails in AWS uses APIs such as `bedrock:CreateGuardrail` (see [Boto3 `create_guardrail`](https://docs.aws.amazon.com/boto3/latest/reference/services/bedrock/client/create_guardrail.html)); those are operator/console permissions, not required on the app role unless your deployment creates guardrails from code.
+Creating or editing guardrails in AWS uses APIs such as `bedrock:CreateGuardrail` (see [Boto3 `create_guardrail`](https://docs.aws.amazon.com/boto3/latest/reference/services/bedrock/client/create_guardrail.html)); grant those on the principal that runs provisioning (CI, admin role, or one-off script). The runtime app role only needs `ApplyGuardrail` + inference unless you call `create_sra_guardrail_from_settings` from the same role.
+
+Helpers live in `smart_report_analyst.service.bedrock.bedrock_guardrail_config` (`build_sra_guardrail_create_kwargs`, `create_sra_guardrail`, `create_sra_guardrail_from_settings`).
 
 ## Knowledge Base retrieve
 
