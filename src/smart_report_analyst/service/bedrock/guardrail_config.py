@@ -1,21 +1,28 @@
-"""Bedrock Guardrails: create via boto3 and attach to Strands ``BedrockModel``.
+"""Bedrock Guardrails: provision with boto3 and resolve id/version for ``BedrockModel``.
 
-- **Provisioning**: ``bedrock.Client.create_guardrail`` (control plane) defines policies.
-- **Runtime**: ``bedrock-runtime`` InvokeModel uses ``guardrailIdentifier`` / version from settings.
+Uses ``list_guardrails`` + ``create_guardrail`` (control plane). Inference attaches the
+resolved guardrail via Strands ``BedrockModel`` kwargs.
 
+PII ``type`` values must match Bedrock's allowed enum exactly.
 See: https://docs.aws.amazon.com/boto3/latest/reference/services/bedrock/client/create_guardrail.html
 """
 
 from __future__ import annotations
 
+import logging
+import threading
+from dataclasses import dataclass
 from typing import Any
 
 import boto3
 from botocore.client import BaseClient
 
-from smart_report_analyst.config.settings import get_settings
+from smart_report_analyst.config.settings import Settings, get_settings
 
-# Align with ``strands.guardrails.taxonomy.OFF_TOPIC_REFUSAL_MESSAGE`` (Bedrock blocked prompt text).
+logger = logging.getLogger(__name__)
+
+DEFAULT_SRA_GUARDRAIL_NAME = "smart-report-analyst-sba-scope"
+
 _DEFAULT_BLOCKED_INPUT = (
     "I can only help with analytical questions about SBA loan data in this application "
     "(exploring the database, metrics, trends, and SQL-backed reports). "
@@ -26,46 +33,66 @@ _DEFAULT_BLOCKED_OUTPUT = (
     "Ask about SBA loan data analysis instead."
 )
 
+# Bedrock API enum for ``piiEntitiesConfig[].type`` (must match exactly).
+_PII_TYPES_FOR_SRA: tuple[str, ...] = (
+    "ADDRESS",
+    "AGE",
+    "AWS_ACCESS_KEY",
+    "AWS_SECRET_KEY",
+    "CA_HEALTH_NUMBER",
+    "CA_SOCIAL_INSURANCE_NUMBER",
+    "CREDIT_DEBIT_CARD_CVV",
+    "CREDIT_DEBIT_CARD_EXPIRY",
+    "CREDIT_DEBIT_CARD_NUMBER",
+    "DRIVER_ID",
+    "EMAIL",
+    "INTERNATIONAL_BANK_ACCOUNT_NUMBER",
+    "IP_ADDRESS",
+    "LICENSE_PLATE",
+    "MAC_ADDRESS",
+    "NAME",
+    "PASSWORD",
+    "PHONE",
+    "PIN",
+    "SWIFT_CODE",
+    "UK_NATIONAL_HEALTH_SERVICE_NUMBER",
+    "UK_NATIONAL_INSURANCE_NUMBER",
+    "UK_UNIQUE_TAXPAYER_REFERENCE_NUMBER",
+    "URL",
+    "USERNAME",
+    "US_BANK_ACCOUNT_NUMBER",
+    "US_BANK_ROUTING_NUMBER",
+    "US_INDIVIDUAL_TAX_IDENTIFICATION_NUMBER",
+    "US_PASSPORT_NUMBER",
+    "US_SOCIAL_SECURITY_NUMBER",
+    "VEHICLE_IDENTIFICATION_NUMBER",
+)
+
+_guardrail_resolve_lock = threading.Lock()
+_resolved_guardrail: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class GuardrailIdentity:
+    """Identifiers returned from list/create for use with InvokeModel."""
+
+    guardrail_id: str
+    version: str
+
 
 def bedrock_control_plane_client(*, region_name: str) -> BaseClient:
-    """Bedrock management API (create/list/update guardrails), not InvokeModel."""
     return boto3.client("bedrock", region_name=region_name)
 
 
-def bedrock_model_guardrail_kwargs() -> dict[str, Any]:
-    """
-    Build kwargs for ``BedrockModel(..., **kwargs)`` when guardrail env vars are set.
-
-    If ``BEDROCK_GUARDRAIL_ID`` is unset, returns an empty dict (no Bedrock guardrail).
-    """
-    settings = get_settings()
-    gid = (settings.BEDROCK_GUARDRAIL_ID or "").strip()
-    if not gid:
-        return {}
-
-    version = (settings.BEDROCK_GUARDRAIL_VERSION or "").strip() or "DRAFT"
-    out: dict[str, Any] = {
-        "guardrail_id": gid,
-        "guardrail_version": version,
+def _pii_entity(pii_type: str) -> dict[str, Any]:
+    return {
+        "type": pii_type,
+        "action": "ANONYMIZE",
+        "inputAction": "ANONYMIZE",
+        "outputAction": "ANONYMIZE",
+        "inputEnabled": True,
+        "outputEnabled": True,
     }
-
-    trace = (settings.BEDROCK_GUARDRAIL_TRACE or "").strip().lower()
-    if trace in ("enabled", "disabled", "enabled_full"):
-        out["guardrail_trace"] = trace  # type: ignore[assignment]
-
-    if settings.BEDROCK_GUARDRAIL_REDACT_INPUT is not None:
-        out["guardrail_redact_input"] = settings.BEDROCK_GUARDRAIL_REDACT_INPUT
-    msg = (settings.BEDROCK_GUARDRAIL_REDACT_INPUT_MESSAGE or "").strip()
-    if msg:
-        out["guardrail_redact_input_message"] = msg
-
-    if settings.BEDROCK_GUARDRAIL_REDACT_OUTPUT is not None:
-        out["guardrail_redact_output"] = settings.BEDROCK_GUARDRAIL_REDACT_OUTPUT
-    omsg = (settings.BEDROCK_GUARDRAIL_REDACT_OUTPUT_MESSAGE or "").strip()
-    if omsg:
-        out["guardrail_redact_output_message"] = omsg
-
-    return out
 
 
 def _content_filter(
@@ -85,24 +112,19 @@ def _content_filter(
     }
 
 
-def build_sra_guardrail_create_kwargs(
+def build_sra_guardrail_create_request(
     *,
-    name: str = "smart-report-analyst-sba-scope",
+    name: str,
     description: str = (
-        "Restricts Smart Report Analyst to SBA loan data analytics; blocks general "
-        "knowledge, time/weather, politics, macro/tax/legal/medical advice, and similar off-topic prompts."
+        "Smart Report Analyst: SBA loan analytics scope; denied off-topic prompts; "
+        "content and PII safeguards."
     ),
     blocked_input_messaging: str | None = None,
     blocked_outputs_messaging: str | None = None,
     topic_tier: str = "CLASSIC",
     content_tier: str = "CLASSIC",
 ) -> dict[str, Any]:
-    """
-    Default ``**kwargs`` for ``bedrock.create_guardrail`` aligned with SRA product scope.
-
-    Override any top-level key by passing through ``create_sra_guardrail(..., **overrides)``
-    or by editing the returned dict before calling the client.
-    """
+    """Full ``create_guardrail`` request body for the SRA default guardrail."""
     blocked_in = (blocked_input_messaging or _DEFAULT_BLOCKED_INPUT).strip()
     blocked_out = (blocked_outputs_messaging or _DEFAULT_BLOCKED_OUTPUT).strip()
 
@@ -147,33 +169,172 @@ def build_sra_guardrail_create_kwargs(
                 _content_filter("VIOLENCE"),
                 _content_filter("SEXUAL"),
                 _content_filter("INSULTS"),
+                _content_filter("MISCONDUCT"),
+                _content_filter("PROMPT_ATTACK"),
             ],
             "tierConfig": {"tierName": content_tier},
+        },
+        "wordPolicyConfig": {
+            "managedWordListsConfig": [
+                {
+                    "type": "PROFANITY",
+                    "inputAction": "BLOCK",
+                    "outputAction": "BLOCK",
+                    "inputEnabled": True,
+                    "outputEnabled": True,
+                },
+            ],
+        },
+        "sensitiveInformationPolicyConfig": {
+            "piiEntitiesConfig": [_pii_entity(t) for t in _PII_TYPES_FOR_SRA],
         },
     }
 
 
+def _list_all_guardrails(client: BaseClient) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    token: str | None = None
+    while True:
+        req: dict[str, Any] = {"maxResults": 50}
+        if token:
+            req["nextToken"] = token
+        resp = client.list_guardrails(**req)
+        out.extend(resp.get("guardrails") or [])
+        token = resp.get("nextToken")
+        if not token:
+            break
+    return out
+
+
+def find_existing_sra_guardrail(
+    client: BaseClient,
+    *,
+    name: str,
+) -> dict[str, Any] | None:
+    """Return one list_guardrails entry for ``name``, preferring ``READY`` status."""
+    matches = [g for g in _list_all_guardrails(client) if g.get("name") == name]
+    if not matches:
+        return None
+    for g in matches:
+        if g.get("status") == "READY":
+            return g
+    return matches[0]
+
+
 def create_sra_guardrail(
     client: BaseClient,
-    **kwargs: Any,
+    *,
+    name: str,
+    **overrides: Any,
 ) -> dict[str, Any]:
-    """
-    Call ``client.create_guardrail`` with SRA defaults, merged with ``kwargs`` (top-level only).
+    body = build_sra_guardrail_create_request(name=name)
+    body.update(overrides)
+    return client.create_guardrail(**body)
 
-    Use a client from ``bedrock_control_plane_client(region_name=settings.AWS_REGION)``.
-    Requires IAM permissions such as ``bedrock:CreateGuardrail`` on the account.
 
-    Returns the API response (``guardrailId``, ``guardrailArn``, ``version``, ``createdAt``).
+def get_or_create_sra_guardrail(
+    settings: Settings,
+    *,
+    client: BaseClient | None = None,
+) -> GuardrailIdentity:
     """
-    request = build_sra_guardrail_create_kwargs()
-    request.update(kwargs)
-    return client.create_guardrail(**request)
+    Resolve guardrail id + version: find by configured name, else ``create_guardrail``.
+
+    Cached per process after first successful resolution.
+    """
+    global _resolved_guardrail  # noqa: PLW0603 — intentional module singleton
+
+    if _resolved_guardrail is not None:
+        return GuardrailIdentity(
+            guardrail_id=_resolved_guardrail["guardrail_id"],
+            version=_resolved_guardrail["version"],
+        )
+
+    with _guardrail_resolve_lock:
+        if _resolved_guardrail is not None:
+            return GuardrailIdentity(
+                guardrail_id=_resolved_guardrail["guardrail_id"],
+                version=_resolved_guardrail["version"],
+            )
+
+        c = client or bedrock_control_plane_client(region_name=settings.AWS_REGION)
+        name = (settings.BEDROCK_GUARDRAIL_NAME or DEFAULT_SRA_GUARDRAIL_NAME).strip()
+
+        existing = find_existing_sra_guardrail(c, name=name)
+        if existing:
+            gid = existing.get("id") or ""
+            ver = (existing.get("version") or "DRAFT").strip() or "DRAFT"
+            if not gid:
+                raise RuntimeError("list_guardrails entry missing id")
+            logger.info(
+                "bedrock_guardrail_reuse",
+                extra={"guardrail_id": gid, "version": ver, "name": name},
+            )
+            _resolved_guardrail = {"guardrail_id": gid, "version": ver}
+            return GuardrailIdentity(guardrail_id=gid, version=ver)
+
+        resp = create_sra_guardrail(c, name=name)
+        gid = resp.get("guardrailId") or ""
+        ver = (resp.get("version") or "DRAFT").strip() or "DRAFT"
+        if not gid:
+            raise RuntimeError("create_guardrail response missing guardrailId")
+        logger.info(
+            "bedrock_guardrail_created",
+            extra={"guardrail_id": gid, "version": ver, "name": name},
+        )
+        _resolved_guardrail = {"guardrail_id": gid, "version": ver}
+        return GuardrailIdentity(guardrail_id=gid, version=ver)
+
+
+def bedrock_model_guardrail_kwargs(settings: Settings) -> dict[str, Any]:
+    """
+    Kwargs for Strands ``BedrockModel`` after resolving guardrail via get-or-create.
+
+    Empty dict when ``BEDROCK_GUARDRAIL_ENABLED`` is false.
+    """
+    if not settings.BEDROCK_GUARDRAIL_ENABLED:
+        return {}
+
+    ident = get_or_create_sra_guardrail(settings)
+    out: dict[str, Any] = {
+        "guardrail_id": ident.guardrail_id,
+        "guardrail_version": ident.version,
+    }
+
+    trace = (settings.BEDROCK_GUARDRAIL_TRACE or "").strip().lower()
+    if trace in ("enabled", "disabled", "enabled_full"):
+        out["guardrail_trace"] = trace  # type: ignore[assignment]
+
+    if settings.BEDROCK_GUARDRAIL_REDACT_INPUT is not None:
+        out["guardrail_redact_input"] = settings.BEDROCK_GUARDRAIL_REDACT_INPUT
+    msg = (settings.BEDROCK_GUARDRAIL_REDACT_INPUT_MESSAGE or "").strip()
+    if msg:
+        out["guardrail_redact_input_message"] = msg
+
+    if settings.BEDROCK_GUARDRAIL_REDACT_OUTPUT is not None:
+        out["guardrail_redact_output"] = settings.BEDROCK_GUARDRAIL_REDACT_OUTPUT
+    omsg = (settings.BEDROCK_GUARDRAIL_REDACT_OUTPUT_MESSAGE or "").strip()
+    if omsg:
+        out["guardrail_redact_output_message"] = omsg
+
+    return out
+
+
+def reset_guardrail_cache_for_tests() -> None:
+    """Clear process cache (tests only)."""
+    global _resolved_guardrail  # noqa: PLW0603
+    _resolved_guardrail = None
+
+
+build_sra_guardrail_create_kwargs = build_sra_guardrail_create_request
 
 
 def create_sra_guardrail_from_settings(
+    settings: Settings | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Convenience: build control client from settings and create the default guardrail."""
-    settings = get_settings()
-    client = bedrock_control_plane_client(region_name=settings.AWS_REGION)
-    return create_sra_guardrail(client, **kwargs)
+    """Force ``create_guardrail`` (does not use get-or-create cache). Prefer ``get_or_create_sra_guardrail``."""
+    s = settings or get_settings()
+    client = bedrock_control_plane_client(region_name=s.AWS_REGION)
+    name = (s.BEDROCK_GUARDRAIL_NAME or DEFAULT_SRA_GUARDRAIL_NAME).strip()
+    return create_sra_guardrail(client, name=name, **kwargs)

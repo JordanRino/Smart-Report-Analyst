@@ -31,15 +31,18 @@ class Settings(BaseSettings):
         validation_alias="BEDROCK_MODEL_ID",
     )
 
-    BEDROCK_GUARDRAIL_ID: Optional[str] = Field(
-        default=None,
-        description="Optional Bedrock guardrail ID for Strands BedrockModel (InvokeModel guardrails).",
-        validation_alias="BEDROCK_GUARDRAIL_ID",
+    BEDROCK_GUARDRAIL_ENABLED: bool = Field(
+        default=True,
+        description=(
+            "When true, Strands BedrockModel resolves a guardrail by name (list_guardrails) or creates it "
+            "(create_guardrail). Set false for local dev without bedrock:ListGuardrails/CreateGuardrail."
+        ),
+        validation_alias="BEDROCK_GUARDRAIL_ENABLED",
     )
-    BEDROCK_GUARDRAIL_VERSION: Optional[str] = Field(
-        default=None,
-        description="Guardrail version (e.g. DRAFT or numeric). Defaults to DRAFT when ID is set but version is empty.",
-        validation_alias="BEDROCK_GUARDRAIL_VERSION",
+    BEDROCK_GUARDRAIL_NAME: str = Field(
+        default="smart-report-analyst-sba-scope",
+        description="Guardrail name used for list/create lookup (must match an existing guardrail name to reuse).",
+        validation_alias="BEDROCK_GUARDRAIL_NAME",
     )
     BEDROCK_GUARDRAIL_TRACE: Optional[str] = Field(
         default=None,
