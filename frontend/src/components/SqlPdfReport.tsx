@@ -46,18 +46,19 @@ export function SqlPdfReport({
   /** Set only after a successful blob → object URL (avoids Strict Mode / dedupe deadlock). */
   const succeededKeyRef = useRef<string | null>(null);
 
-  const fetchKey = useMemo(() => {
-    const rows = Array.isArray(results) ? results : [];
-    const fp = resultsFingerprint(rows);
-    return `${query}\0${fp}\0${refinedUserQuestion ?? ""}\0${rowCount ?? ""}`;
-  }, [query, results, refinedUserQuestion, rowCount]);
+  const rows = Array.isArray(results) ? results : [];
+  const resultsFingerprintValue = resultsFingerprint(rows);
+  const fetchKey = useMemo(
+    () =>
+      `${query}\0${resultsFingerprintValue}\0${refinedUserQuestion ?? ""}\0${rowCount ?? ""}`,
+    [query, resultsFingerprintValue, refinedUserQuestion, rowCount],
+  );
 
   useEffect(() => {
     if (status !== "complete") {
       succeededKeyRef.current = null;
       return;
     }
-    const rows = Array.isArray(results) ? results : [];
     if (!query.trim() && rows.length === 0) {
       return;
     }
@@ -129,7 +130,6 @@ export function SqlPdfReport({
 
     return () => {
       ac.abort();
-      setLoading(false);
     };
   }, [status, fetchKey]);
 
