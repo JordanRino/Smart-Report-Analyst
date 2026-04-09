@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 from strands.types.content import Message
 from strands.types.session import SessionMessage
 

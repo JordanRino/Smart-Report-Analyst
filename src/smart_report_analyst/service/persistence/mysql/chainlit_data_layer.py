@@ -7,11 +7,10 @@ import json
 
 from typing import Optional, Dict, Any
 from chainlit.data import BaseDataLayer
-from chainlit.user import PersistedUser, User
+from chainlit.user import PersistedUser
 from chainlit.types import PaginatedResponse, PageInfo
-from chainlit.element import ElementDict, Element
+from chainlit.element import Element
 
-from typing import Any, Dict, Optional, List
 
 
 from smart_report_analyst.config.settings import get_settings
@@ -146,7 +145,7 @@ class MySQLDataLayer(BaseDataLayer):
                     if isinstance(metadata, str):
                         try:
                             metadata = json.loads(metadata)
-                        except:
+                        except (json.JSONDecodeError, TypeError, ValueError):
                             metadata = None
 
                     threads.append({
@@ -215,7 +214,7 @@ class MySQLDataLayer(BaseDataLayer):
                 if metadata and isinstance(metadata, str):
                     try:
                         metadata = json.loads(metadata)
-                    except:
+                    except (json.JSONDecodeError, TypeError, ValueError):
                         metadata = None
 
                 return {
@@ -299,7 +298,7 @@ class MySQLDataLayer(BaseDataLayer):
                     if r.get("tool_result"):
                         try:
                             r["tool_result"] = json.loads(r["tool_result"])
-                        except:
+                        except (json.JSONDecodeError, TypeError, ValueError):
                             pass
 
                 return rows

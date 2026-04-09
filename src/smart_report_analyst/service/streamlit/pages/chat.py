@@ -33,10 +33,6 @@ def handle_user_input(user_input: str):
         # Show loading indicator
         with st.spinner("Analyzing your request..."):
             if settings.AGENT_BACKEND == "strands":
-                slim_history = [
-                    {"role": m["role"], "content": m["content"]}
-                    for m in UIState.get_conversation_history()
-                ]
                 response = run_sync(user_input, session_id=session_id)
             else:
                 response = bedrock_manager.invoke_agent(

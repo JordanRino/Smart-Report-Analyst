@@ -1,13 +1,12 @@
 """Chat message display components."""
 
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import streamlit as st
 
 from smart_report_analyst.service.streamlit import config
 from smart_report_analyst.service.streamlit.state import UIState
-from smart_report_analyst.service.lambda_function.manager import LambdaManager
 from smart_report_analyst.service.feedback.manager import handle_positive_feedback
 from smart_report_analyst.config.settings import get_settings
 
@@ -39,7 +38,7 @@ def render_chat_message(message: Dict[str, Any]):
         try:
             dt = datetime.fromisoformat(timestamp)
             time_str = f" — {dt.strftime('%H:%M:%S')}"
-        except:
+        except (TypeError, ValueError):
             pass
 
     # Display message

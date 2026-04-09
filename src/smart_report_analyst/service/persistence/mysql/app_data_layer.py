@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import aiomysql
-import json
 import logging
 from typing import Dict, Any
 
@@ -93,7 +92,7 @@ class AppDataLayer:
                         """,
                         (refined_user_question, executed_sql),
                     )
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to store successful query")
 
 app_data_layer = AppDataLayer()

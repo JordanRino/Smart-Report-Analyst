@@ -7,9 +7,6 @@ from botocore.config import Config as BotocoreConfig
 from strands.models import BedrockModel
 
 from smart_report_analyst.config.settings import get_settings
-from smart_report_analyst.service.bedrock.guardrail_config import (
-    bedrock_model_guardrail_kwargs,
-)
 
 
 def build_bedrock_model() -> BedrockModel:

@@ -131,6 +131,9 @@ export function SqlPdfReport({
     return () => {
       ac.abort();
     };
+    // fetchKey already fingerprints query/results/refinedUserQuestion/rowCount; listing raw
+    // props would re-run on unstable ``results`` references without changing intent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable via fetchKey
   }, [status, fetchKey]);
 
   useEffect(() => {
