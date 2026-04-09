@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useApp } from "@/context/AppContext";
 import { CopilotChat, type RenderMessageProps } from "@copilotkit/react-ui";
 import { ActionRenderProps, useCopilotAction } from "@copilotkit/react-core";
@@ -41,6 +41,20 @@ export function ChatInterface() {
       });
     },
     [effectiveThreadId],
+  );
+
+  const observabilityHooks = useMemo(
+    () => ({ onFeedbackGiven }),
+    [onFeedbackGiven],
+  );
+
+  const copilotLabels = useMemo(
+    () => ({
+      title: "SBA Loan Assistant",
+      initial:
+        "Hello! I can help you analyze SBA loan data. What would you like to see?",
+    }),
+    [],
   );
 
   useCopilotAction({
@@ -104,12 +118,9 @@ export function ChatInterface() {
       <CopilotChat
         key={effectiveThreadId}
         instructions="Senior SBA Analyst. Always provide SQL results when asked. Be concise and professional."
-        labels={{
-          title: "SBA Loan Assistant",
-          initial: "Hello! I can help you analyze SBA loan data. What would you like to see?",
-        }}
+        labels={copilotLabels}
         className="min-h-0 flex-1"
-        observabilityHooks={{ onFeedbackGiven }}
+        observabilityHooks={observabilityHooks}
         RenderMessage={AgentRenderMessage}
       />
     </div>
