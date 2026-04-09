@@ -136,21 +136,46 @@ def build_sra_guardrail_create_request(
         "topicPolicyConfig": {
             "topicsConfig": [
                 {
-                    "name": "OffTopicNonLoanAnalytics",
-                    "definition": (
-                        "Requests that are not about analyzing, filtering, aggregating, or reporting on "
-                        "SBA or small-business loan records in this application's database. Includes: current "
-                        "time or date, weather, sports, recipes, jokes, creative writing, homework, translation "
-                        "unrelated to loan data, personal tax/legal/medical/investment advice, electoral or "
-                        "partisan politics, global macroeconomics or central-bank policy unrelated to the loan "
-                        "dataset, cryptocurrency trading, or other general chit-chat."
-                    ),
+                    "name": "ChitChatAndGeneral",
+                    "definition": "Time, date, weather, sports, jokes, creative writing, homework, or general conversation unrelated to SBA loan data.",
                     "examples": [
                         "What time is it in Tokyo?",
-                        "What's the weather this weekend?",
-                        "Who should I vote for?",
+                        "What's the weather today?",
+                        "Who won the game?",
+                        "Tell me a joke.",
+                        "Help me with my homework."
+                    ],
+                    "type": "DENY",
+                    "inputAction": "BLOCK",
+                    "outputAction": "BLOCK",
+                    "inputEnabled": True,
+                    "outputEnabled": True,
+                },
+                {
+                    "name": "ProfessionalAdvice",
+                    "definition": "Personal tax, legal, medical, or investment advice. Includes cryptocurrency trading, electoral, or partisan politics.",
+                    "examples": [
                         "Give me tax advice for my LLC.",
                         "Should I buy Bitcoin?",
+                        "Who should I vote for?",
+                        "Legal help for my business.",
+                        "Medical symptoms check."
+                    ],
+                    "type": "DENY",
+                    "inputAction": "BLOCK",
+                    "outputAction": "BLOCK",
+                    "inputEnabled": True,
+                    "outputEnabled": True,
+                },
+                {
+                    "name": "EconomicsAndMisc",
+                    "definition": "Global macroeconomics, central-bank policy, recipes, or non-loan translation services.",
+                    "examples": [
+                        "Explain global inflation trends.",
+                        "Give me a brownie recipe.",
+                        "Translate this to Spanish.",
+                        "What is the Fed doing with rates?",
+                        "How do I cook pasta?"
                     ],
                     "type": "DENY",
                     "inputAction": "BLOCK",
