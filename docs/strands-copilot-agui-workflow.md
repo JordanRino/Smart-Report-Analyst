@@ -24,10 +24,14 @@ sequenceDiagram
   A->>API: RUN_STARTED
   API-->>UI: SSE
 
-  A->>S: Stream turn user text
+  A->>API: REASONING_* + STEP_* (trace / thinking)
+  API-->>UI: SSE
+
+  A->>S: Stream turn user text merged with trace queue
   S->>M: Model + tools
   M-->>S: Tokens
-  S-->>A: chunk events
+  S-->>A: trace + chunk events
+  A->>API: REASONING_MESSAGE_CONTENT + STEP_* from tools
   A->>API: TEXT_MESSAGE_CONTENT deltas
   API-->>UI: SSE stream
 
@@ -53,11 +57,12 @@ sequenceDiagram
 
 1. **Connect** — The SPA loads CopilotKit with a runtime URL, thread id, and agent name. The runtime advertises the agent via `info` and accepts execute requests.  
 2. **Start run** — The server opens an SSE stream and emits **run started** so the client can bind this stream to the active turn.  
-3. **Stream answer** — Strands drives the model; assistant text is forwarded as **text message** chunks (AG-UI).  
-4. **Execute SQL** — The `execute_sql` tool runs against MySQL; the final tool payload is captured for this turn.  
-5. **Bridge to UI** — The adapter emits **tool call** events that CopilotKit maps to a **frontend** `execute_sql` action so the chat can show the report card and request a PDF.  
-6. **Finish** — **State snapshot** and **run finished** close the turn; the UI shows the full message and any custom widgets.  
-7. **Follow-ups** — The browser calls separate REST endpoints (e.g. PDF generation, positive feedback) using data from the action; these are not part of the AG-UI event stream.
+3. **Trace / reasoning** — Optional **reasoning** message and **step** events stream while tools run (KB search, SQL), so the UI can show a collapsible “thinking” strip before the final answer.  
+4. **Stream answer** — Strands drives the model; assistant text is forwarded as **text message** chunks (AG-UI) after reasoning closes.  
+5. **Execute SQL** — The `execute_sql` tool runs against MySQL; the final tool payload is captured for this turn.  
+6. **Bridge to UI** — The adapter emits **tool call** events that CopilotKit maps to a **frontend** `execute_sql` action so the chat can show the report card and request a PDF.  
+7. **Finish** — **State snapshot** and **run finished** close the turn; the UI shows the full message and any custom widgets.  
+8. **Follow-ups** — The browser calls separate REST endpoints (e.g. PDF generation, positive feedback) using data from the action; these are not part of the AG-UI event stream.
 
 ---
 

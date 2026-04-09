@@ -1,10 +1,9 @@
-"""execute_sql tool: Lambda payload keys and Strands Lambda body passthrough."""
+"""execute_sql / retrieve_kb Strands tools (MySQL via app_data_layer)."""
 
 from __future__ import annotations
 
-import io
-import json
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.strands.tools import StrandsTurnState, build_strands_tools
@@ -26,79 +25,76 @@ def _minimal_settings(**kwargs) -> Settings:
     return Settings.model_construct(**base)
 
 
-@patch("smart_report_analyst.service.strands.tools.strands_tools.LambdaManager")
-def test_execute_sql_lambda_payload_keys(mock_lm_class):
-    mock_instance = MagicMock()
-    mock_lm_class.return_value = mock_instance
-    lambda_body = {
+@patch("smart_report_analyst.service.strands.tools.tools.KnowledgeBaseRetriever")
+@patch("smart_report_analyst.service.strands.tools.tools.get_settings")
+@patch("smart_report_analyst.service.strands.tools.tools.app_data_layer")
+def test_execute_sql_passthrough_body(mock_adl, mock_get_settings, _mock_kb) -> None:
+    mock_get_settings.return_value = _minimal_settings()
+    body = {
         "refined_user_question": "Count loans",
         "executed_sql": "SELECT COUNT(*) AS n FROM t",
         "results": [{"n": 3}],
         "row_count": 1,
         "to_store": True,
     }
-    mock_instance.invoke_function.return_value = {
-        "Payload": io.BytesIO(json.dumps(lambda_body).encode("utf-8")),
-    }
+    mock_adl.execute_generated_query = AsyncMock(return_value=body)
 
-    settings = _minimal_settings()
     state = StrandsTurnState()
-    tools = build_strands_tools(settings, state)
+    tools = build_strands_tools(state)
     execute_sql = next(t for t in tools if getattr(t, "tool_name", None) == "execute_sql")
 
-    result = execute_sql(
-        query="SELECT COUNT(*) AS n FROM t",
-        user_refined_question="Count loans",
-        to_store=True,
-    )
+    async def _run() -> None:
+        result = await execute_sql(
+            query="SELECT COUNT(*) AS n FROM t",
+            user_refined_question="Count loans",
+            to_store=True,
+        )
+        mock_adl.execute_generated_query.assert_awaited_once_with(
+            "SELECT COUNT(*) AS n FROM t",
+            "Count loans",
+            True,
+        )
+        assert result == body
+        assert state.last_tool_result == body
 
-    mock_instance.invoke_function.assert_called_once()
-    call = mock_instance.invoke_function.call_args
-    assert call[0][0] == "store_sql_sra"
-    payload = call[0][1]
-    assert set(payload.keys()) == {"query", "user_refined_question", "to_store"}
-    assert payload["query"] == "SELECT COUNT(*) AS n FROM t"
-    assert payload["user_refined_question"] == "Count loans"
-    assert payload["to_store"] is True
-
-    assert result["refined_user_question"] == "Count loans"
-    assert result["executed_sql"] == "SELECT COUNT(*) AS n FROM t"
-    assert result["row_count"] == 1
-    assert state.last_tool_result == result
+    asyncio.run(_run())
 
 
-@patch("smart_report_analyst.service.strands.tools.strands_tools.LambdaManager")
-def test_execute_sql_uses_strands_lambda_name_when_set(mock_lm_class):
-    mock_instance = MagicMock()
-    mock_lm_class.return_value = mock_instance
-    mock_instance.invoke_function.return_value = {
-        "Payload": io.BytesIO(
-            b'{"refined_user_question":"q","executed_sql":"SELECT 1","results":[],"row_count":0,"to_store":false}'
-        ),
-    }
-    settings = _minimal_settings(STRANDS_SQL_LAMBDA_FUNCTION_NAME="strands_sql_fn")
-    tools = build_strands_tools(settings, StrandsTurnState())
-    execute_sql = next(t for t in tools if getattr(t, "tool_name", None) == "execute_sql")
-    execute_sql(query="SELECT 1", user_refined_question="q", to_store=False)
-    assert mock_instance.invoke_function.call_args[0][0] == "strands_sql_fn"
+@patch("smart_report_analyst.service.strands.tools.tools.KnowledgeBaseRetriever")
+@patch("smart_report_analyst.service.strands.tools.tools.get_settings")
+@patch("smart_report_analyst.service.strands.tools.tools.app_data_layer")
+def test_execute_sql_sets_turn_state_on_error(
+    mock_adl, mock_get_settings, _mock_kb
+) -> None:
+    mock_get_settings.return_value = _minimal_settings()
+    mock_adl.execute_generated_query = AsyncMock(side_effect=RuntimeError("db down"))
 
-
-@patch("smart_report_analyst.service.strands.tools.strands_tools.LambdaManager")
-def test_execute_sql_sets_turn_state_on_error(mock_lm_class):
-    mock_instance = MagicMock()
-    mock_lm_class.return_value = mock_instance
-    mock_instance.invoke_function.side_effect = RuntimeError("lambda down")
-
-    settings = _minimal_settings()
     state = StrandsTurnState()
-    tools = build_strands_tools(settings, state)
+    tools = build_strands_tools(state)
     execute_sql = next(t for t in tools if getattr(t, "tool_name", None) == "execute_sql")
 
-    result = execute_sql(
-        query="SELECT 1",
-        user_refined_question="Q",
-        to_store=False,
-    )
+    async def _run() -> None:
+        result = await execute_sql(
+            query="SELECT 1",
+            user_refined_question="Q",
+            to_store=False,
+        )
+        assert result.get("error") is True
+        assert state.last_tool_result.get("error") is True
 
-    assert result.get("error") is True
-    assert state.last_tool_result.get("error") is True
+    asyncio.run(_run())
+
+
+@patch("smart_report_analyst.service.strands.tools.tools.KnowledgeBaseRetriever")
+@patch("smart_report_analyst.service.strands.tools.tools.get_settings")
+def test_retrieve_kb_context_delegates(mock_get_settings, mock_kb_class) -> None:
+    mock_get_settings.return_value = _minimal_settings()
+    mock_kb = MagicMock()
+    mock_kb.retrieve.return_value = "ctx text"
+    mock_kb_class.return_value = mock_kb
+
+    tools = build_strands_tools(StrandsTurnState())
+    retrieve = next(t for t in tools if getattr(t, "tool_name", None) == "retrieve_kb_context")
+    out = retrieve(query="tables")
+    assert out == "ctx text"
+    mock_kb.retrieve.assert_called_once_with("tables")

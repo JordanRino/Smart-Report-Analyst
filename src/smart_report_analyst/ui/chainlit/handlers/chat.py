@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from typing import Any, Dict, List
 
 import chainlit as cl
-from chainlit.data import get_data_layer
 
 from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.bedrock.agent_manager import BedrockManager
@@ -92,7 +90,14 @@ async def on_message(message: cl.Message):
 
         try:
             if settings.AGENT_BACKEND == "strands":
-                async for event in run_stream(message.content, session_id=str(thread_id)):
+                async for event in run_stream(
+                    message.content,
+                    session_id=str(thread_id),
+                    run_id=str(uuid.uuid4()),
+                    agent_name="loan_analyst_chainlit",
+                ):
+                    if event["type"] == "trace":
+                        continue
                     if event["type"] == "chunk":
                         token = event["data"]
                         full_response += token

@@ -2,10 +2,25 @@
 
 import { useCallback } from "react";
 import { useApp } from "@/context/AppContext";
-import { CopilotChat } from "@copilotkit/react-ui";
+import { CopilotChat, type RenderMessageProps } from "@copilotkit/react-ui";
 import { ActionRenderProps, useCopilotAction } from "@copilotkit/react-core";
+import type { ReasoningMessage } from "@copilotkit/shared";
 import { SqlPdfReport } from "@/components/SqlPdfReport";
+import { ReasoningTraceMessage } from "@/components/agent-trace/ReasoningTraceMessage";
 import { getApiPrefix } from "@/lib/env";
+
+function AgentRenderMessage(props: RenderMessageProps) {
+  const { message, inProgress, isCurrentMessage } = props;
+  if (message && typeof message === "object" && "role" in message && message.role === "reasoning") {
+    return (
+      <ReasoningTraceMessage
+        message={message as ReasoningMessage}
+        inProgress={Boolean(inProgress && isCurrentMessage)}
+      />
+    );
+  }
+  return null;
+}
 
 export function ChatInterface() {
   const { effectiveThreadId } = useApp();
@@ -95,6 +110,7 @@ export function ChatInterface() {
         }}
         className="min-h-0 flex-1"
         observabilityHooks={{ onFeedbackGiven }}
+        RenderMessage={AgentRenderMessage}
       />
     </div>
   );

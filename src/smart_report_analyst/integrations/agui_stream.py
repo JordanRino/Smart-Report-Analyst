@@ -20,19 +20,36 @@ from smart_report_analyst.service.strands.session.reader import (
 )
 
 
+def _with_timestamp(body: dict[str, Any], timestamp: int | None) -> dict[str, Any]:
+    if timestamp is not None:
+        body = {**body, "timestamp": timestamp}
+    return body
+
+
 def agui_sse_event(payload: dict[str, Any]) -> str:
     """One SSE frame: ``data: {...}\\n\\n`` (no spaces after ``data:`` per client trim)."""
     line = json.dumps(payload, default=str, separators=(",", ":"))
     return f"data:{line}\n\n"
 
 
-def agui_run_started(*, thread_id: str, run_id: str) -> str:
+def agui_run_started(
+    *, thread_id: str, run_id: str, timestamp: int | None = None
+) -> str:
     return agui_sse_event(
-        {"type": "RUN_STARTED", "threadId": thread_id, "runId": run_id}
+        _with_timestamp(
+            {"type": "RUN_STARTED", "threadId": thread_id, "runId": run_id},
+            timestamp,
+        )
     )
 
 
-def agui_run_finished(*, thread_id: str, run_id: str, result: Any | None = None) -> str:
+def agui_run_finished(
+    *,
+    thread_id: str,
+    run_id: str,
+    result: Any | None = None,
+    timestamp: int | None = None,
+) -> str:
     body: dict[str, Any] = {
         "type": "RUN_FINISHED",
         "threadId": thread_id,
@@ -40,25 +57,43 @@ def agui_run_finished(*, thread_id: str, run_id: str, result: Any | None = None)
     }
     if result is not None:
         body["result"] = result
-    return agui_sse_event(body)
+    return agui_sse_event(_with_timestamp(body, timestamp))
 
 
-def agui_text_message_start(*, message_id: str, role: str = "assistant") -> str:
+def agui_text_message_start(
+    *,
+    message_id: str,
+    role: str = "assistant",
+    timestamp: int | None = None,
+) -> str:
     return agui_sse_event(
-        {"type": "TEXT_MESSAGE_START", "messageId": message_id, "role": role}
+        _with_timestamp(
+            {"type": "TEXT_MESSAGE_START", "messageId": message_id, "role": role},
+            timestamp,
+        )
     )
 
 
-def agui_text_message_content(*, message_id: str, delta: str) -> str:
+def agui_text_message_content(
+    *, message_id: str, delta: str, timestamp: int | None = None
+) -> str:
     if not delta:
         return ""
     return agui_sse_event(
-        {"type": "TEXT_MESSAGE_CONTENT", "messageId": message_id, "delta": delta}
+        _with_timestamp(
+            {"type": "TEXT_MESSAGE_CONTENT", "messageId": message_id, "delta": delta},
+            timestamp,
+        )
     )
 
 
-def agui_text_message_end(*, message_id: str) -> str:
-    return agui_sse_event({"type": "TEXT_MESSAGE_END", "messageId": message_id})
+def agui_text_message_end(*, message_id: str, timestamp: int | None = None) -> str:
+    return agui_sse_event(
+        _with_timestamp(
+            {"type": "TEXT_MESSAGE_END", "messageId": message_id},
+            timestamp,
+        )
+    )
 
 
 def agui_tool_call_start(
@@ -66,6 +101,7 @@ def agui_tool_call_start(
     tool_call_id: str,
     tool_call_name: str,
     parent_message_id: str | None = None,
+    timestamp: int | None = None,
 ) -> str:
     ev: dict[str, Any] = {
         "type": "TOOL_CALL_START",
@@ -74,17 +110,27 @@ def agui_tool_call_start(
     }
     if parent_message_id is not None:
         ev["parentMessageId"] = parent_message_id
-    return agui_sse_event(ev)
+    return agui_sse_event(_with_timestamp(ev, timestamp))
 
 
-def agui_tool_call_args(*, tool_call_id: str, delta: str) -> str:
+def agui_tool_call_args(
+    *, tool_call_id: str, delta: str, timestamp: int | None = None
+) -> str:
     return agui_sse_event(
-        {"type": "TOOL_CALL_ARGS", "toolCallId": tool_call_id, "delta": delta}
+        _with_timestamp(
+            {"type": "TOOL_CALL_ARGS", "toolCallId": tool_call_id, "delta": delta},
+            timestamp,
+        )
     )
 
 
-def agui_tool_call_end(*, tool_call_id: str) -> str:
-    return agui_sse_event({"type": "TOOL_CALL_END", "toolCallId": tool_call_id})
+def agui_tool_call_end(*, tool_call_id: str, timestamp: int | None = None) -> str:
+    return agui_sse_event(
+        _with_timestamp(
+            {"type": "TOOL_CALL_END", "toolCallId": tool_call_id},
+            timestamp,
+        )
+    )
 
 
 def agui_tool_call_result(
@@ -92,20 +138,127 @@ def agui_tool_call_result(
     message_id: str,
     tool_call_id: str,
     content: str,
+    timestamp: int | None = None,
 ) -> str:
     return agui_sse_event(
-        {
-            "type": "TOOL_CALL_RESULT",
-            "messageId": message_id,
-            "toolCallId": tool_call_id,
-            "content": content,
-            "role": "tool",
-        }
+        _with_timestamp(
+            {
+                "type": "TOOL_CALL_RESULT",
+                "messageId": message_id,
+                "toolCallId": tool_call_id,
+                "content": content,
+                "role": "tool",
+            },
+            timestamp,
+        )
     )
 
 
-def agui_state_snapshot(*, snapshot: dict[str, Any]) -> str:
-    return agui_sse_event({"type": "STATE_SNAPSHOT", "snapshot": snapshot})
+def agui_state_snapshot(
+    *, snapshot: dict[str, Any], timestamp: int | None = None
+) -> str:
+    return agui_sse_event(
+        _with_timestamp(
+            {"type": "STATE_SNAPSHOT", "snapshot": snapshot},
+            timestamp,
+        )
+    )
+
+
+def agui_reasoning_start(*, message_id: str, timestamp: int | None = None) -> str:
+    return agui_sse_event(
+        _with_timestamp(
+            {"type": "REASONING_START", "messageId": message_id},
+            timestamp,
+        )
+    )
+
+
+def agui_reasoning_message_start(
+    *, message_id: str, timestamp: int | None = None
+) -> str:
+    return agui_sse_event(
+        _with_timestamp(
+            {
+                "type": "REASONING_MESSAGE_START",
+                "messageId": message_id,
+                "role": "reasoning",
+            },
+            timestamp,
+        )
+    )
+
+
+def agui_reasoning_message_content(
+    *,
+    message_id: str,
+    delta: str,
+    timestamp: int | None = None,
+) -> str:
+    if not delta:
+        return ""
+    return agui_sse_event(
+        _with_timestamp(
+            {
+                "type": "REASONING_MESSAGE_CONTENT",
+                "messageId": message_id,
+                "delta": delta,
+            },
+            timestamp,
+        )
+    )
+
+
+def agui_reasoning_message_end(
+    *, message_id: str, timestamp: int | None = None
+) -> str:
+    return agui_sse_event(
+        _with_timestamp(
+            {"type": "REASONING_MESSAGE_END", "messageId": message_id},
+            timestamp,
+        )
+    )
+
+
+def agui_reasoning_end(*, message_id: str, timestamp: int | None = None) -> str:
+    return agui_sse_event(
+        _with_timestamp(
+            {"type": "REASONING_END", "messageId": message_id},
+            timestamp,
+        )
+    )
+
+
+def agui_step_started(*, step_name: str, timestamp: int | None = None) -> str:
+    return agui_sse_event(
+        _with_timestamp(
+            {"type": "STEP_STARTED", "stepName": step_name},
+            timestamp,
+        )
+    )
+
+
+def agui_step_finished(*, step_name: str, timestamp: int | None = None) -> str:
+    return agui_sse_event(
+        _with_timestamp(
+            {"type": "STEP_FINISHED", "stepName": step_name},
+            timestamp,
+        )
+    )
+
+
+def agui_custom(
+    *,
+    name: str,
+    value: Any,
+    timestamp: int | None = None,
+) -> str:
+    return agui_sse_event(
+        _with_timestamp(
+            {"type": "CUSTOM", "name": name, "value": value},
+            timestamp,
+        )
+    )
 
 
 def iter_connect_replay_frames(*, thread_id: str, run_id: str) -> Iterator[str]:
@@ -141,8 +294,16 @@ def iter_connect_replay_frames(*, thread_id: str, run_id: str) -> Iterator[str]:
 
 
 __all__ = [
+    "agui_custom",
+    "agui_reasoning_end",
+    "agui_reasoning_message_content",
+    "agui_reasoning_message_end",
+    "agui_reasoning_message_start",
+    "agui_reasoning_start",
     "agui_run_finished",
     "agui_run_started",
+    "agui_step_finished",
+    "agui_step_started",
     "iter_connect_replay_frames",
     "agui_sse_event",
     "agui_state_snapshot",

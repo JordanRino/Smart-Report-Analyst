@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, AsyncIterator
 
 from smart_report_analyst.service.strands.agents import create_strands_agent
 from smart_report_analyst.service.strands.tools import StrandsTurnState
 from smart_report_analyst.service.strands.session import build_strands_session_manager
-from smart_report_analyst.service.strands.conversation import (build_strands_conversation_manager,)
+from smart_report_analyst.service.strands.conversation import (
+    build_strands_conversation_manager,
+)
 from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.strands.guardrails import classify_user_message
 
 
 logger = logging.getLogger(__name__)
+
+_STREAM_END = object()
 
 
 def _summarize_stream_event_for_log(event: Any) -> str:
@@ -33,14 +38,69 @@ def _validate_strands_settings() -> None:
         raise ValueError("BEDROCK_KNOWLEDGE_BASE_ID is required when AGENT_BACKEND=strands")
 
 
+async def _anext_or_sentinel(aiter: AsyncIterator[Any]) -> Any:
+    try:
+        return await aiter.__anext__()
+    except StopAsyncIteration:
+        return _STREAM_END
+
+
+async def _merge_stream_with_trace_queue(
+    stream_agen: AsyncIterator[Any],
+    trace_queue: asyncio.Queue,
+) -> AsyncIterator[tuple[str, Any]]:
+    """
+    Interleave Strands ``stream_async`` events with :class:`~smart_report_analyst.service.agent_trace.events.TraceEvent` items from ``trace_queue``.
+    """
+    pending_stream = asyncio.create_task(_anext_or_sentinel(stream_agen))
+    pending_queue = asyncio.create_task(trace_queue.get())
+    try:
+        while True:
+            done, _ = await asyncio.wait(
+                {pending_stream, pending_queue},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if pending_queue in done:
+                ev = pending_queue.result()
+                yield ("trace", ev)
+                pending_queue = asyncio.create_task(trace_queue.get())
+            if pending_stream in done:
+                item = pending_stream.result()
+                if item is _STREAM_END:
+                    break
+                yield ("stream", item)
+                pending_stream = asyncio.create_task(_anext_or_sentinel(stream_agen))
+    finally:
+        pending_queue.cancel()
+        try:
+            await pending_queue
+        except asyncio.CancelledError:
+            pass
+        pending_stream.cancel()
+        try:
+            await pending_stream
+        except asyncio.CancelledError:
+            pass
+
+    while True:
+        try:
+            ev = trace_queue.get_nowait()
+            yield ("trace", ev)
+        except asyncio.QueueEmpty:
+            break
+
+
 async def run_stream(
     user_message: str,
     session_id: str,
+    *,
+    run_id: str = "",
+    agent_name: str = "loan_analyst_agent",
 ) -> AsyncIterator[dict[str, Any]]:
     """
-    Async-iterate stream events compatible with Chainlit's chunk / tool_result handling.
+    Async-iterate stream events compatible with CopilotKit / Chainlit.
 
-    Yields dicts: {"type": "chunk", "data": str} and finally {"type": "tool_result", "data": dict}.
+    Yields ``chunk``, ``trace`` (optional), and a final ``tool_result``.
     """
     _validate_strands_settings()
     logger.info(
@@ -65,6 +125,13 @@ async def run_stream(
         return
 
     turn_state = StrandsTurnState()
+    trace_queue: asyncio.Queue = asyncio.Queue()
+    turn_state.trace_queue = trace_queue
+    turn_state.main_loop = asyncio.get_running_loop()
+    turn_state.trace_run_id = run_id or ""
+    turn_state.trace_thread_id = session_id
+    turn_state.trace_agent_name = agent_name
+
     sm = build_strands_session_manager(session_id)
     cm = build_strands_conversation_manager()
     agent = create_strands_agent(
@@ -79,7 +146,13 @@ async def run_stream(
     non_dict_event_count = 0
     first_event_summary: str | None = None
 
-    async for event in agent.stream_async(user_message):
+    stream_agen = agent.stream_async(user_message)
+    async for kind, payload in _merge_stream_with_trace_queue(stream_agen, trace_queue):
+        if kind == "trace":
+            yield {"type": "trace", "data": payload}
+            continue
+
+        event = payload
         stream_event_count += 1
         if first_event_summary is None:
             first_event_summary = _summarize_stream_event_for_log(event)

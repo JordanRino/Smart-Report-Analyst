@@ -33,7 +33,7 @@ flowchart TB
   end
 
   subgraph strands [Strands agent]
-    RUN[run_stream turn]
+    RUN[run_stream merged stream + trace queue]
     TOOLS[Tools - KB retrieve SQL execute]
     SESS[File session storage]
     RUN --> TOOLS
@@ -62,8 +62,9 @@ flowchart TB
 |--------|------|
 | **CopilotKit (client)** | Chat UI, thread id, agent name, optional public key for observability; calls the runtime URL. |
 | **CopilotKit (FastAPI)** | Registers the remote agent; handles agent execute, info, and related HTTP endpoints. |
-| **StrandsCopilotAgent** | Maps one user turn into AG-UI frames: run lifecycle, streaming assistant text, synthetic `execute_sql` tool frames for the frontend, final state snapshot. |
-| **AG-UI helpers** | Build SSE `data: {...}` lines (`RUN_*`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, etc.) compatible with CopilotKit’s AG-UI client. |
+| **StrandsCopilotAgent** | Maps one user turn into AG-UI frames: run lifecycle, **reasoning / trace** (`REASONING_*`, `STEP_*`, `CUSTOM`), streaming assistant text, synthetic `execute_sql` tool frames for the frontend, final state snapshot. |
+| **agent_trace** | Canonical `TraceEvent` model and mapper to AG-UI; backend-agnostic so other agents could reuse the same codec. |
+| **AG-UI helpers** | Build SSE `data: {...}` lines (`RUN_*`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `REASONING_*`, `STEP_*`, `CUSTOM`, optional `timestamp`, etc.) compatible with CopilotKit’s AG-UI client. |
 | **Strands** | Orchestrates the model, tools, and session persistence on disk (per thread). |
 | **REST beside Copilot** | PDF generation, chat history listing, positive feedback—same origin/CORS as the app, not part of the AG-UI stream. |
 
@@ -82,13 +83,14 @@ src/smart_report_analyst/
 ├── routes/
 │   └── routes.py               # CopilotKit runtime mount, REST: PDF, history, feedback
 ├── integrations/
-│   ├── agui_stream.py          # AG-UI SSE event builders
+│   ├── agui_stream.py          # AG-UI SSE event builders (incl. reasoning / steps / custom)
 │   └── copilotkit.py           # CopilotKit remote endpoint + info HTML patch
 └── service/
+    ├── agent_trace/            # TraceEvent + mapper → AG-UI (agent-agnostic)
     ├── strands/
     │   ├── agent.py            # StrandsCopilotAgent → AG-UI stream
-    │   ├── runner.py           # Async turn: chunks + final tool_result
-    │   ├── tools/              # execute_sql, KB retrieve (Bedrock KB)
+    │   ├── runner.py           # Async turn: merged Strands stream + trace queue → chunks + trace + tool_result
+    │   ├── tools/              # execute_sql, KB retrieve (Bedrock KB); tools enqueue TraceEvent while running
     │   ├── agents/             # Strands agent / orchestrator definitions
     │   ├── session/            # File-backed sessions (thread ↔ storage)
     │   └── conversation/       # Conversation manager wiring
@@ -104,7 +106,8 @@ src/smart_report_analyst/
 frontend/src/
 ├── app/                        # Next.js App Router (layout, home page)
 ├── components/
-│   ├── ChatInterface.tsx       # CopilotChat, execute_sql action, observability hooks
+│   ├── ChatInterface.tsx       # CopilotChat, RenderMessage → ReasoningTraceMessage, execute_sql action
+│   ├── agent-trace/            # Collapsible reasoning / trace UI (ReasoningTraceMessage)
 │   ├── SqlPdfReport.tsx        # PDF fetch + preview overlay
 │   └── HistorySidebar.tsx      # Session list from /api/history
 ├── providers/
@@ -115,6 +118,20 @@ frontend/src/
     ├── env.ts                  # API base URL, Copilot runtime URL, public key
     └── api.ts                  # Shared fetch helpers (if used)
 ```
+
+---
+
+## Live agent trace (reasoning + steps)
+
+During a turn, the server can surface **live** work while Strands is blocked in tools:
+
+1. **`StrandsTurnState`** holds an `asyncio.Queue` and trace metadata (`run_id`, `thread_id`, `agent_name`) for the turn.
+2. **`retrieve_kb_context`** and **`execute_sql`** enqueue **`TraceEvent`** instances (`STEP_*`, human-readable **`REASONING_LINE`**, optional **`CUSTOM`** timings). Sync tools use `asyncio.run_coroutine_threadsafe` to the main loop; async tools `await` the queue.
+3. **`run_stream`** merges the Strands `stream_async` iterator with the queue so trace events yield **`{"type":"trace","data": TraceEvent}`** interleaved with **`chunk`** events.
+4. **`StrandsCopilotAgent`** opens **`REASONING_*`** before the first assistant token, forwards trace rows through **`trace_events_to_sse_frames`**, then closes reasoning and starts **`TEXT_MESSAGE_*`** on the first text chunk.
+5. **Frontend** — `CopilotChat` **`RenderMessage`** renders `role === "reasoning"` via **`ReasoningTraceMessage`** (collapsible trace body). The default CopilotKit renderer still applies to other message types when our renderer returns `null`.
+
+**Note:** The synthetic **`execute_sql`** AG-UI tool sequence remains the bridge for **`useCopilotAction`** (PDF widget). Trace lines describe **server-side** KB/SQL work; labels in the UI distinguish that from the report card.
 
 ---
 
