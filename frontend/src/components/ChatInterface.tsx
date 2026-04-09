@@ -2,16 +2,48 @@
 
 import { useCallback, useMemo } from "react";
 import { useApp } from "@/context/AppContext";
-import { CopilotChat, type RenderMessageProps } from "@copilotkit/react-ui";
+import {
+  AssistantMessage,
+  CopilotChat,
+  ImageRenderer,
+  UserMessage,
+  type RenderMessageProps,
+} from "@copilotkit/react-ui";
 import { ActionRenderProps, useCopilotAction } from "@copilotkit/react-core";
-import type { ReasoningMessage } from "@copilotkit/shared";
+import type { ActivityMessage, ReasoningMessage } from "@copilotkit/shared";
 import { SqlPdfReport } from "@/components/SqlPdfReport";
+import { ActivityTraceCard } from "@/components/agent-trace/ActivityTraceCard";
+import { TOOL_TRACE_ACTIVITY_TYPE } from "@/components/agent-trace/constants";
 import { ReasoningTraceMessage } from "@/components/agent-trace/ReasoningTraceMessage";
 import { getApiPrefix } from "@/lib/env";
 
+/**
+ * Match ``@copilotkit/react-ui`` default ``RenderMessage`` routing so user/assistant
+ * still render when we only customize reasoning + tool-activity messages.
+ */
 function AgentRenderMessage(props: RenderMessageProps) {
-  const { message, inProgress, isCurrentMessage } = props;
-  if (message && typeof message === "object" && "role" in message && message.role === "reasoning") {
+  const {
+    message,
+    messages,
+    inProgress,
+    index,
+    isCurrentMessage,
+    AssistantMessage: AssistantMessageOverride,
+    UserMessage: UserMessageOverride,
+    ImageRenderer: ImageRendererOverride,
+    onRegenerate,
+    onCopy,
+    onThumbsUp,
+    onThumbsDown,
+    messageFeedback,
+    markdownTagRenderers,
+  } = props;
+
+  const User = UserMessageOverride ?? UserMessage;
+  const Assistant = AssistantMessageOverride ?? AssistantMessage;
+  const Img = ImageRendererOverride ?? ImageRenderer;
+
+  if (message.role === "reasoning") {
     return (
       <ReasoningTraceMessage
         message={message as ReasoningMessage}
@@ -19,7 +51,51 @@ function AgentRenderMessage(props: RenderMessageProps) {
       />
     );
   }
-  return null;
+
+  if (message.role === "activity" && message.activityType === TOOL_TRACE_ACTIVITY_TYPE) {
+    return (
+      <ActivityTraceCard
+        message={message as ActivityMessage}
+        inProgress={Boolean(inProgress && isCurrentMessage)}
+      />
+    );
+  }
+
+  switch (message.role) {
+    case "user":
+      return (
+        <User
+          key={index}
+          rawData={message}
+          data-message-role="user"
+          message={message}
+          ImageRenderer={Img}
+        />
+      );
+    case "assistant":
+      return (
+        <Assistant
+          key={index}
+          data-message-role="assistant"
+          subComponent={message.generativeUI?.()}
+          rawData={message}
+          message={message}
+          messages={messages}
+          isLoading={inProgress && isCurrentMessage && !message.content}
+          isGenerating={inProgress && isCurrentMessage && !!message.content}
+          isCurrentMessage={isCurrentMessage}
+          onRegenerate={() => onRegenerate?.(message.id)}
+          onCopy={onCopy}
+          onThumbsUp={onThumbsUp}
+          onThumbsDown={onThumbsDown}
+          feedback={messageFeedback?.[message.id] || null}
+          markdownTagRenderers={markdownTagRenderers}
+          ImageRenderer={Img}
+        />
+      );
+    default:
+      return null;
+  }
 }
 
 export function ChatInterface() {

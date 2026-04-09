@@ -6,6 +6,8 @@ import asyncio
 import json
 from typing import Any
 
+import pytest
+
 from smart_report_analyst.service.agent_trace.events import TraceEvent, TraceKind
 from smart_report_analyst.service.strands.runner import _merge_stream_with_trace_queue
 
@@ -29,6 +31,52 @@ def test_trace_events_to_sse_step_and_reasoning() -> None:
     assert body["type"] == "STEP_STARTED"
     assert body["stepName"] == "tool:execute_sql"
     assert body["timestamp"] == 100
+
+
+def test_trace_events_post_answer_skips_reasoning_line() -> None:
+    from smart_report_analyst.service.agent_trace.agui_mapper import (
+        TraceEventChannel,
+        trace_events_to_sse_frames,
+    )
+
+    rid = "reasoning-1"
+    ev = TraceEvent(
+        run_id="r1",
+        thread_id="t1",
+        agent_name="a",
+        step_id=1,
+        ts_ms=50,
+        kind=TraceKind.REASONING_LINE,
+        payload={"text": "should not map to REASONING_MESSAGE_CONTENT"},
+    )
+    frames = list(
+        trace_events_to_sse_frames(
+            ev,
+            reasoning_message_id=rid,
+            channel=TraceEventChannel.POST_ANSWER,
+        )
+    )
+    assert frames == []
+
+
+def test_assert_no_reasoning_content_after_end_passes_and_fails() -> None:
+    from smart_report_analyst.service.agent_trace.sse_reasoning_invariant import (
+        assert_no_reasoning_content_after_end_for_same_message,
+    )
+
+    good = [
+        'data:{"type":"REASONING_MESSAGE_CONTENT","messageId":"m1","delta":"a"}\n\n',
+        'data:{"type":"REASONING_MESSAGE_END","messageId":"m1"}\n\n',
+        'data:{"type":"REASONING_MESSAGE_CONTENT","messageId":"m2","delta":"b"}\n\n',
+    ]
+    assert_no_reasoning_content_after_end_for_same_message(good)
+
+    bad = [
+        'data:{"type":"REASONING_MESSAGE_END","messageId":"m1"}\n\n',
+        'data:{"type":"REASONING_MESSAGE_CONTENT","messageId":"m1","delta":"late"}\n\n',
+    ]
+    with pytest.raises(AssertionError, match="REASONING_MESSAGE_CONTENT after"):
+        assert_no_reasoning_content_after_end_for_same_message(bad)
 
 
 def test_merge_stream_interleaves_trace_before_stream_end() -> None:

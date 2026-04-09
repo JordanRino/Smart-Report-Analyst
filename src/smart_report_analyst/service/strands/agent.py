@@ -31,7 +31,13 @@ from smart_report_analyst.integrations.agui_stream import (
     agui_tool_call_result,
     agui_tool_call_start,
 )
-from smart_report_analyst.service.agent_trace.agui_mapper import trace_events_to_sse_frames
+from smart_report_analyst.service.agent_trace.agui_mapper import (
+    DEFAULT_TOOL_TRACE_ACTIVITY_TYPE,
+    ToolTraceActivityState,
+    TraceEventChannel,
+    trace_event_to_activity_snapshot_frame,
+    trace_events_to_sse_frames,
+)
 from smart_report_analyst.service.agent_trace.events import TraceEvent
 from smart_report_analyst.service.feedback.snapshot_index import (
     register_feedback_snapshot,
@@ -149,13 +155,36 @@ class StrandsCopilotAgent(Agent):
             description=description or "SBA loan analysis (Strands + Bedrock)",
         )
 
-    def _emit_trace_frames(
+    def _emit_pre_answer_trace_frames(
         self, raw: Any, *, reasoning_message_id: str
     ) -> Iterator[str]:
+        """Map tool trace to REASONING_* / STEP_* only before assistant text starts."""
         if isinstance(raw, TraceEvent):
             yield from trace_events_to_sse_frames(
-                raw, reasoning_message_id=reasoning_message_id
+                raw,
+                reasoning_message_id=reasoning_message_id,
+                channel=TraceEventChannel.PRE_ANSWER,
             )
+
+    def _emit_post_answer_tool_activity(
+        self,
+        raw: Any,
+        *,
+        activity_message_id: str,
+        tool_trace_state: ToolTraceActivityState,
+    ) -> Iterator[str]:
+        """
+        After assistant streaming starts, tool trace must not touch REASONING_*.
+        Emit ACTIVITY_SNAPSHOT (replace) for CopilotKit activity UI.
+        """
+        if not isinstance(raw, TraceEvent):
+            return
+        yield from trace_event_to_activity_snapshot_frame(
+            raw,
+            state=tool_trace_state,
+            message_id=activity_message_id,
+            activity_type=DEFAULT_TOOL_TRACE_ACTIVITY_TYPE,
+        )
 
     async def execute(  # pylint: disable=too-many-arguments
         self,
@@ -182,6 +211,8 @@ class StrandsCopilotAgent(Agent):
 
         message_id = str(uuid.uuid4())
         reasoning_message_id = str(uuid.uuid4())
+        tool_trace_activity_message_id = str(uuid.uuid4())
+        tool_trace_activity_state = ToolTraceActivityState()
         t0 = _ts_ms()
         yield agui_run_started(thread_id=thread_id, run_id=run_id, timestamp=t0)
         yield agui_reasoning_start(
@@ -209,11 +240,20 @@ class StrandsCopilotAgent(Agent):
                 et = event.get("type")
                 if et == "trace":
                     raw = event.get("data")
-                    for frame in self._emit_trace_frames(
-                        raw, reasoning_message_id=reasoning_message_id
-                    ):
-                        if frame:
-                            yield frame
+                    if first_text_chunk:
+                        for frame in self._emit_post_answer_tool_activity(
+                            raw,
+                            activity_message_id=tool_trace_activity_message_id,
+                            tool_trace_state=tool_trace_activity_state,
+                        ):
+                            if frame:
+                                yield frame
+                    else:
+                        for frame in self._emit_pre_answer_trace_frames(
+                            raw, reasoning_message_id=reasoning_message_id
+                        ):
+                            if frame:
+                                yield frame
                     continue
                 if et == "chunk":
                     data = event.get("data", "")

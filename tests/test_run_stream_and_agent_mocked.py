@@ -11,6 +11,9 @@ import json
 from unittest.mock import MagicMock, patch
 
 from smart_report_analyst.service.agent_trace.events import TraceEvent, TraceKind
+from smart_report_analyst.service.agent_trace.sse_reasoning_invariant import (
+    assert_no_reasoning_content_after_end_for_same_message,
+)
 from smart_report_analyst.service.strands.agent import StrandsCopilotAgent
 from smart_report_analyst.service.strands.guardrails.classifier import TopicClassification
 from smart_report_analyst.service.strands.runner import run_stream
@@ -115,6 +118,18 @@ def test_strands_copilot_agent_execute_uses_mock_run_stream(mock_run_stream: Mag
             ),
         }
         yield {"type": "chunk", "data": "Synthetic answer."}
+        yield {
+            "type": "trace",
+            "data": TraceEvent(
+                run_id=run_id or "r",
+                thread_id=session_id,
+                agent_name=agent_name,
+                step_id=2,
+                ts_ms=8,
+                kind=TraceKind.REASONING_LINE,
+                payload={"text": "Post-answer tool log line\n"},
+            ),
+        }
         yield {"type": "tool_result", "data": {}}
 
     mock_run_stream.side_effect = _fake_run_stream
@@ -131,6 +146,7 @@ def test_strands_copilot_agent_execute_uses_mock_run_stream(mock_run_stream: Mag
         return parts
 
     frames = asyncio.run(_run())
+    assert_no_reasoning_content_after_end_for_same_message(frames)
     events = _sse_json_lines(frames)
     types = [e["type"] for e in events]
 
@@ -141,6 +157,17 @@ def test_strands_copilot_agent_execute_uses_mock_run_stream(mock_run_stream: Mag
     assert "strands_turn" in step_names
     assert "tool:mock" in step_names
     assert "TEXT_MESSAGE_CONTENT" in types
+    assert "ACTIVITY_SNAPSHOT" in types
+    activity = [e for e in events if e["type"] == "ACTIVITY_SNAPSHOT"]
+    assert len(activity) == 1
+    assert activity[0].get("activityType") == "smart_report_analyst.tool_trace"
+    content = activity[0].get("content") or {}
+    assert "Post-answer tool log line" in "\n".join(content.get("lines") or [])
+    reasoning_contents = [
+        e for e in events if e["type"] == "REASONING_MESSAGE_CONTENT"
+    ]
+    assert len(reasoning_contents) == 1
+    assert "Post-answer" not in (reasoning_contents[0].get("delta") or "")
     assert "RUN_FINISHED" in types
 
     mock_run_stream.assert_called_once()

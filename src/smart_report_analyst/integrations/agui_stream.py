@@ -261,6 +261,25 @@ def agui_custom(
     )
 
 
+def agui_activity_snapshot(
+    *,
+    message_id: str,
+    activity_type: str,
+    content: dict[str, Any],
+    replace: bool = True,
+    timestamp: int | None = None,
+) -> str:
+    """AG-UI activity snapshot (tool progress / side-channel updates, not reasoning)."""
+    body: dict[str, Any] = {
+        "type": "ACTIVITY_SNAPSHOT",
+        "messageId": message_id,
+        "activityType": activity_type,
+        "content": content,
+        "replace": replace,
+    }
+    return agui_sse_event(_with_timestamp(body, timestamp))
+
+
 def iter_connect_replay_frames(*, thread_id: str, run_id: str) -> Iterator[str]:
     """
     Emit AG-UI events so CopilotKit ``connectAgent`` hydrates the chat from disk.
@@ -294,6 +313,7 @@ def iter_connect_replay_frames(*, thread_id: str, run_id: str) -> Iterator[str]:
 
 
 __all__ = [
+    "agui_activity_snapshot",
     "agui_custom",
     "agui_reasoning_end",
     "agui_reasoning_message_content",
