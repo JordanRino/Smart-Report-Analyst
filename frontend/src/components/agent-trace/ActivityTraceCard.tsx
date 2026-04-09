@@ -56,9 +56,7 @@ export function ActivityTraceCard({ message, inProgress }: Props) {
     >
       <summary className="cursor-pointer select-none list-none px-3 py-2 font-medium [&::-webkit-details-marker]:hidden">
         <span className="inline-flex items-center gap-2">
-          <span className="text-sky-700 dark:text-sky-300">
-            {inProgress ? "Tools" : "Tool trace"}
-          </span>
+          <span className="text-sky-700 dark:text-sky-300">Trace</span>
           <span className="font-normal text-sky-900/90 dark:text-sky-100/90">{preview}</span>
           {inProgress ? (
             <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-sky-500" />

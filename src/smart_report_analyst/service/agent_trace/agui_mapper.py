@@ -47,6 +47,10 @@ class ToolTraceActivityState:
             value = ev.payload.get("value")
             if name == "tool_timing_ms" and isinstance(value, dict):
                 self.timings.append(dict(value))
+        elif ev.kind == TraceKind.MODEL_REASONING_DELTA:
+            text = str(ev.payload.get("text") or "").strip()
+            if text:
+                self.lines.append(text)
 
 
 def trace_event_to_activity_snapshot_frame(
@@ -112,6 +116,17 @@ def _map_one(
         name = str(ev.payload.get("step_name") or "step")
         yield agui_stream.agui_step_finished(step_name=name, timestamp=ts)
     elif ev.kind == TraceKind.REASONING_LINE:
+        if channel == TraceEventChannel.POST_ANSWER:
+            return
+        text = str(ev.payload.get("text") or "")
+        if not text:
+            return
+        yield agui_stream.agui_reasoning_message_content(
+            message_id=reasoning_message_id,
+            delta=text if text.endswith("\n") else f"{text}\n",
+            timestamp=ts,
+        )
+    elif ev.kind == TraceKind.MODEL_REASONING_DELTA:
         if channel == TraceEventChannel.POST_ANSWER:
             return
         text = str(ev.payload.get("text") or "")

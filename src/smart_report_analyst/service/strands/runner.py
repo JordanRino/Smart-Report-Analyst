@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any, AsyncIterator
 
+from smart_report_analyst.service.agent_trace.events import TraceEvent, TraceKind
 from smart_report_analyst.service.strands.agents import create_strands_agent
 from smart_report_analyst.service.strands.tools import StrandsTurnState
 from smart_report_analyst.service.strands.session import build_strands_session_manager
@@ -127,7 +129,6 @@ async def run_stream(
     turn_state = StrandsTurnState()
     trace_queue: asyncio.Queue = asyncio.Queue()
     turn_state.trace_queue = trace_queue
-    turn_state.main_loop = asyncio.get_running_loop()
     turn_state.trace_run_id = run_id or ""
     turn_state.trace_thread_id = session_id
     turn_state.trace_agent_name = agent_name
@@ -145,6 +146,7 @@ async def run_stream(
     stream_event_count = 0
     non_dict_event_count = 0
     first_event_summary: str | None = None
+    stream_trace_seq = 0
 
     stream_agen = agent.stream_async(user_message)
     async for kind, payload in _merge_stream_with_trace_queue(stream_agen, trace_queue):
@@ -159,6 +161,21 @@ async def run_stream(
         if not isinstance(event, dict):
             non_dict_event_count += 1
             continue
+        rt = event.get("reasoningText")
+        if isinstance(rt, str) and rt:
+            stream_trace_seq += 1
+            yield {
+                "type": "trace",
+                "data": TraceEvent(
+                    run_id=run_id or "",
+                    thread_id=session_id,
+                    agent_name=agent_name,
+                    step_id=stream_trace_seq,
+                    ts_ms=int(time.time() * 1000),
+                    kind=TraceKind.MODEL_REASONING_DELTA,
+                    payload={"text": rt},
+                ),
+            }
         data = event.get("data")
         if isinstance(data, str) and data:
             saw_text = True

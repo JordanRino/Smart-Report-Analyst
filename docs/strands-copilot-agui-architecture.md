@@ -197,7 +197,7 @@ frontend/src/
 During a turn, the server can surface **live** work while Strands is blocked in tools:
 
 1. **`StrandsTurnState`** holds an `asyncio.Queue` and trace metadata (`run_id`, `thread_id`, `agent_name`) for the turn.
-2. **`retrieve_kb_context`** and **`execute_sql`** enqueue **`TraceEvent`** instances (`STEP_*`, human-readable **`REASONING_LINE`**, optional **`CUSTOM`** timings). Sync tools use `asyncio.run_coroutine_threadsafe` to the main loop; async tools `await` the queue.
+2. **`retrieve_kb_context`** and **`execute_sql`** are async tools: they **`await`** the trace queue on the same event loop as **`run_stream`**. Blocking boto3 KB retrieve runs in **`asyncio.to_thread`** so OTel/context is not bridged with **`run_coroutine_threadsafe`**.
 3. **`run_stream`** merges the Strands `stream_async` iterator with the queue so trace events yield **`{"type":"trace","data": TraceEvent}`** interleaved with **`chunk`** events.
 4. **`StrandsCopilotAgent`** opens **`REASONING_*`** before the first assistant token, forwards trace rows through **`trace_events_to_sse_frames`**, then closes reasoning and starts **`TEXT_MESSAGE_*`** on the first text chunk.
 5. **Frontend** — `CopilotChat` **`RenderMessage`** renders `role === "reasoning"` via **`ReasoningTraceMessage`** (collapsible trace body). The default CopilotKit renderer still applies to other message types when our renderer returns `null`.

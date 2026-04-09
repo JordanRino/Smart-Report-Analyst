@@ -49,6 +49,7 @@ def test_run_stream_merged_trace_and_chunks_without_bedrock(
 
         class _FakeAgent:
             async def stream_async(self, _user_message: str):
+                yield {"reasoningText": "bedrock reasoning delta"}
                 await turn_state.trace_queue.put(
                     TraceEvent(
                         run_id=turn_state.trace_run_id,
@@ -85,9 +86,9 @@ def test_run_stream_merged_trace_and_chunks_without_bedrock(
     assert types[-1] == "tool_result"
 
     trace_events = [r["data"] for r in rows if r["type"] == "trace"]
-    assert len(trace_events) == 1
-    assert isinstance(trace_events[0], TraceEvent)
-    assert trace_events[0].kind == TraceKind.REASONING_LINE
+    kinds = [e.kind for e in trace_events if isinstance(e, TraceEvent)]
+    assert TraceKind.MODEL_REASONING_DELTA in kinds
+    assert TraceKind.REASONING_LINE in kinds
 
     chunks = [r["data"] for r in rows if r["type"] == "chunk"]
     assert chunks == ["mock-token"]
@@ -115,6 +116,18 @@ def test_strands_copilot_agent_execute_uses_mock_run_stream(mock_run_stream: Mag
                 ts_ms=7,
                 kind=TraceKind.STEP_STARTED,
                 payload={"step_name": "tool:mock"},
+            ),
+        }
+        yield {
+            "type": "trace",
+            "data": TraceEvent(
+                run_id=run_id or "r",
+                thread_id=session_id,
+                agent_name=agent_name,
+                step_id=3,
+                ts_ms=9,
+                kind=TraceKind.MODEL_REASONING_DELTA,
+                payload={"text": "Extended thinking line\n"},
             ),
         }
         yield {"type": "chunk", "data": "Synthetic answer."}
@@ -163,11 +176,12 @@ def test_strands_copilot_agent_execute_uses_mock_run_stream(mock_run_stream: Mag
     assert activity[0].get("activityType") == "smart_report_analyst.tool_trace"
     content = activity[0].get("content") or {}
     assert "Post-answer tool log line" in "\n".join(content.get("lines") or [])
-    reasoning_contents = [
-        e for e in events if e["type"] == "REASONING_MESSAGE_CONTENT"
-    ]
-    assert len(reasoning_contents) == 1
-    assert "Post-answer" not in (reasoning_contents[0].get("delta") or "")
+    reasoning_deltas = "".join(
+        e.get("delta") or ""
+        for e in events
+        if e["type"] == "REASONING_MESSAGE_CONTENT"
+    )
+    assert "Extended thinking line" in reasoning_deltas
     assert "RUN_FINISHED" in types
 
     mock_run_stream.assert_called_once()

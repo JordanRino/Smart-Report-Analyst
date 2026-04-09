@@ -14,12 +14,15 @@ class TraceKind(str, Enum):
     STEP_FINISHED = "step_finished"
     REASONING_LINE = "reasoning_line"
     CUSTOM = "custom"
+    # Bedrock Converse ``reasoningContent`` deltas (Strands ``ReasoningTextStreamEvent``).
+    MODEL_REASONING_DELTA = "model_reasoning_delta"
 
 
 @dataclass(frozen=True, slots=True)
 class TraceEvent:
     """
-    One logical trace unit. Mapped to AG-UI STEP_*, REASONING_MESSAGE_CONTENT, or CUSTOM.
+    One logical trace unit. Mapped to AG-UI STEP_*, REASONING_MESSAGE_CONTENT, CUSTOM,
+    or (for ``MODEL_REASONING_DELTA``) the same reasoning channel as ``REASONING_LINE``.
 
     ``schema_version`` bumps when payload keys change for CUSTOM consumers.
     """

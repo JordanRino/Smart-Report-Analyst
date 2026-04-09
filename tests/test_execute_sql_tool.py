@@ -95,6 +95,10 @@ def test_retrieve_kb_context_delegates(mock_get_settings, mock_kb_class) -> None
 
     tools = build_strands_tools(StrandsTurnState())
     retrieve = next(t for t in tools if getattr(t, "tool_name", None) == "retrieve_kb_context")
-    out = retrieve(query="tables")
-    assert out == "ctx text"
-    mock_kb.retrieve.assert_called_once_with("tables")
+
+    async def _run() -> None:
+        out = await retrieve(query="tables")
+        assert out == "ctx text"
+        mock_kb.retrieve.assert_called_once_with("tables")
+
+    asyncio.run(_run())

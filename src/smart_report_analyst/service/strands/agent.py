@@ -14,7 +14,6 @@ from copilotkit.types import Message, MetaEvent
 
 from smart_report_analyst.integrations.agui_stream import (
     agui_reasoning_end,
-    agui_reasoning_message_content,
     agui_reasoning_message_end,
     agui_reasoning_message_start,
     agui_reasoning_start,
@@ -215,21 +214,35 @@ class StrandsCopilotAgent(Agent):
         tool_trace_activity_state = ToolTraceActivityState()
         t0 = _ts_ms()
         yield agui_run_started(thread_id=thread_id, run_id=run_id, timestamp=t0)
-        yield agui_reasoning_start(
-            message_id=reasoning_message_id, timestamp=t0
-        )
-        yield agui_reasoning_message_start(
-            message_id=reasoning_message_id, timestamp=t0
-        )
-        yield agui_reasoning_message_content(
-            message_id=reasoning_message_id,
-            delta="Working on your request…\n",
-            timestamp=t0,
-        )
-        yield agui_step_started(step_name="strands_turn", timestamp=t0)
 
         final_tool_result: dict[str, Any] = {}
         first_text_chunk = False
+        reasoning_shell: dict[str, bool] = {"open": False}
+
+        def _frames_open_reasoning(ts: int) -> list[str]:
+            if reasoning_shell["open"]:
+                return []
+            reasoning_shell["open"] = True
+            return [
+                agui_reasoning_start(message_id=reasoning_message_id, timestamp=ts),
+                agui_reasoning_message_start(
+                    message_id=reasoning_message_id, timestamp=ts
+                ),
+                agui_step_started(step_name="strands_turn", timestamp=ts),
+            ]
+
+        def _frames_close_reasoning(ts: int) -> list[str]:
+            if not reasoning_shell["open"]:
+                return []
+            reasoning_shell["open"] = False
+            return [
+                agui_step_finished(step_name="strands_turn", timestamp=ts),
+                agui_reasoning_message_end(
+                    message_id=reasoning_message_id, timestamp=ts
+                ),
+                agui_reasoning_end(message_id=reasoning_message_id, timestamp=ts),
+            ]
+
         try:
             async for event in run_stream(
                 user_message,
@@ -240,7 +253,17 @@ class StrandsCopilotAgent(Agent):
                 et = event.get("type")
                 if et == "trace":
                     raw = event.get("data")
-                    if first_text_chunk:
+                    if not isinstance(raw, TraceEvent):
+                        continue
+                    if not first_text_chunk:
+                        for frame in _frames_open_reasoning(_ts_ms()):
+                            yield frame
+                        for frame in self._emit_pre_answer_trace_frames(
+                            raw, reasoning_message_id=reasoning_message_id
+                        ):
+                            if frame:
+                                yield frame
+                    else:
                         for frame in self._emit_post_answer_tool_activity(
                             raw,
                             activity_message_id=tool_trace_activity_message_id,
@@ -248,28 +271,16 @@ class StrandsCopilotAgent(Agent):
                         ):
                             if frame:
                                 yield frame
-                    else:
-                        for frame in self._emit_pre_answer_trace_frames(
-                            raw, reasoning_message_id=reasoning_message_id
-                        ):
-                            if frame:
-                                yield frame
                     continue
+
                 if et == "chunk":
                     data = event.get("data", "")
                     if isinstance(data, str) and data:
                         if not first_text_chunk:
                             first_text_chunk = True
                             t1 = _ts_ms()
-                            yield agui_step_finished(
-                                step_name="strands_turn", timestamp=t1
-                            )
-                            yield agui_reasoning_message_end(
-                                message_id=reasoning_message_id, timestamp=t1
-                            )
-                            yield agui_reasoning_end(
-                                message_id=reasoning_message_id, timestamp=t1
-                            )
+                            for frame in _frames_close_reasoning(t1):
+                                yield frame
                             yield agui_text_message_start(
                                 message_id=message_id,
                                 role="assistant",
@@ -291,11 +302,8 @@ class StrandsCopilotAgent(Agent):
 
         if not first_text_chunk:
             t2 = _ts_ms()
-            yield agui_step_finished(step_name="strands_turn", timestamp=t2)
-            yield agui_reasoning_message_end(
-                message_id=reasoning_message_id, timestamp=t2
-            )
-            yield agui_reasoning_end(message_id=reasoning_message_id, timestamp=t2)
+            for frame in _frames_close_reasoning(t2):
+                yield frame
             yield agui_text_message_start(
                 message_id=message_id, role="assistant", timestamp=t2
             )

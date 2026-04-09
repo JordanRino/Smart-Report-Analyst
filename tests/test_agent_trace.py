@@ -33,6 +33,52 @@ def test_trace_events_to_sse_step_and_reasoning() -> None:
     assert body["timestamp"] == 100
 
 
+def test_trace_events_model_reasoning_delta_maps_like_reasoning_line() -> None:
+    from smart_report_analyst.service.agent_trace.agui_mapper import trace_events_to_sse_frames
+
+    rid = "reasoning-1"
+    ev = TraceEvent(
+        run_id="r1",
+        thread_id="t1",
+        agent_name="a",
+        step_id=1,
+        ts_ms=200,
+        kind=TraceKind.MODEL_REASONING_DELTA,
+        payload={"text": "model reasoning bit"},
+    )
+    frames = list(trace_events_to_sse_frames(ev, reasoning_message_id=rid))
+    assert len(frames) == 1
+    body = json.loads(frames[0].replace("data:", "").strip())
+    assert body["type"] == "REASONING_MESSAGE_CONTENT"
+    assert body["messageId"] == rid
+
+
+def test_trace_events_post_answer_skips_model_reasoning_delta() -> None:
+    from smart_report_analyst.service.agent_trace.agui_mapper import (
+        TraceEventChannel,
+        trace_events_to_sse_frames,
+    )
+
+    rid = "reasoning-1"
+    ev = TraceEvent(
+        run_id="r1",
+        thread_id="t1",
+        agent_name="a",
+        step_id=1,
+        ts_ms=50,
+        kind=TraceKind.MODEL_REASONING_DELTA,
+        payload={"text": "no reasoning after close"},
+    )
+    frames = list(
+        trace_events_to_sse_frames(
+            ev,
+            reasoning_message_id=rid,
+            channel=TraceEventChannel.POST_ANSWER,
+        )
+    )
+    assert frames == []
+
+
 def test_trace_events_post_answer_skips_reasoning_line() -> None:
     from smart_report_analyst.service.agent_trace.agui_mapper import (
         TraceEventChannel,

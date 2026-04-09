@@ -14,6 +14,7 @@ from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.agent_trace.events import TraceEvent, TraceKind
 from smart_report_analyst.service.bedrock.kb_manager import KnowledgeBaseRetriever
 from smart_report_analyst.service.persistence.mysql.app_data_layer import app_data_layer
+from smart_report_analyst.service.bedrock.kb_manager import format_kb_trace_preview
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,6 @@ class StrandsTurnState:
 
     last_tool_result: dict = field(default_factory=dict)
     trace_queue: asyncio.Queue | None = None
-    main_loop: asyncio.AbstractEventLoop | None = None
     trace_run_id: str = ""
     trace_thread_id: str = ""
     trace_agent_name: str = ""
@@ -60,47 +60,11 @@ class StrandsTurnState:
             payload=payload,
         )
 
-    def emit_trace_sync(self, kind: TraceKind, payload: dict[str, Any]) -> None:
-        ev = self._make_trace_event(kind, payload)
-        if ev is None:
-            return
-        self._schedule_put(ev)
-
     async def emit_trace_async(self, kind: TraceKind, payload: dict[str, Any]) -> None:
         ev = self._make_trace_event(kind, payload)
         if ev is None or self.trace_queue is None:
             return
         await self.trace_queue.put(ev)
-
-    def _schedule_put(self, ev: TraceEvent) -> None:
-        q = self.trace_queue
-        loop = self.main_loop
-        if q is None or loop is None:
-            return
-
-        async def _put() -> None:
-            await q.put(ev)
-
-        try:
-            running = asyncio.get_running_loop()
-        except RuntimeError:
-            running = None
-
-        if running is loop:
-            asyncio.create_task(_put())
-            return
-
-        def _done(fut: asyncio.Future[Any]) -> None:
-            try:
-                fut.result()
-            except Exception:
-                logger.debug("trace queue put failed", exc_info=True)
-
-        try:
-            fut = asyncio.run_coroutine_threadsafe(_put(), loop)
-            fut.add_done_callback(_done)
-        except Exception:
-            logger.debug("trace schedule failed", exc_info=True)
 
 
 def build_strands_tools(turn_state: StrandsTurnState) -> list:
@@ -110,10 +74,13 @@ def build_strands_tools(turn_state: StrandsTurnState) -> list:
     kb = KnowledgeBaseRetriever(settings)
 
     @tool
-    def retrieve_kb_context(query: str) -> str:
+    async def retrieve_kb_context(query: str) -> str:
         """
         Search the Smart Report Analyst knowledge base for database metadata (tables, columns)
         and historical SQL examples. Call this before writing SQL when schema or similar queries matter.
+
+        Async so trace events use ``await trace_queue.put`` on the same loop as ``run_stream``;
+        blocking boto3 ``retrieve`` runs in ``asyncio.to_thread``.
 
         Args:
             query: Natural language search string (e.g. user question or table/column hints).
@@ -122,21 +89,29 @@ def build_strands_tools(turn_state: StrandsTurnState) -> list:
             Concatenated retrieval passages for the model to use.
         """
         t0 = _now_ms()
-        turn_state.emit_trace_sync(
+        await turn_state.emit_trace_async(
             TraceKind.STEP_STARTED, {"step_name": "tool:retrieve_kb_context"}
         )
-        turn_state.emit_trace_sync(
-            TraceKind.REASONING_LINE, {"text": "Searching the knowledge base for schema and examples…"}
+        await turn_state.emit_trace_async(
+            TraceKind.REASONING_LINE,
+            {"text": "Searching the knowledge base for schema and examples…"},
         )
         try:
-            return kb.retrieve(query)
+            raw = await asyncio.to_thread(kb.retrieve, query)
+            preview = format_kb_trace_preview(raw)
+            if preview:
+                await turn_state.emit_trace_async(
+                    TraceKind.REASONING_LINE,
+                    {"text": f"Knowledge base preview:\n{preview}\n"},
+                )
+            return raw
         finally:
-            turn_state.emit_trace_sync(
+            await turn_state.emit_trace_async(
                 TraceKind.STEP_FINISHED, {"step_name": "tool:retrieve_kb_context"}
             )
             dt = _now_ms() - t0
             if dt >= 0:
-                turn_state.emit_trace_sync(
+                await turn_state.emit_trace_async(
                     TraceKind.CUSTOM,
                     {
                         "name": "tool_timing_ms",
