@@ -23,10 +23,11 @@ def build_bedrock_model() -> BedrockModel:
         connect_timeout=10,
         read_timeout=120,
     )
-    guardrail_kwargs = bedrock_model_guardrail_kwargs()
+    # Apply the guardrails once the we have access to perform: bedrock:ApplyGuardrail perms
+    # guardrail_kwargs = bedrock_model_guardrail_kwargs()
     return BedrockModel(
         model_id=model_id,
         region_name=settings.AWS_REGION,
         boto_client_config=boto_config,
-        **guardrail_kwargs,
+        # **guardrail_kwargs,
     )
