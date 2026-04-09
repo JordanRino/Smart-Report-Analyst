@@ -300,7 +300,7 @@ def get_or_create_sra_guardrail(
                 raise RuntimeError("list_guardrails entry missing id")
             logger.info(
                 "bedrock_guardrail_reuse",
-                extra={"guardrail_id": gid, "version": ver, "name": name},
+                extra={"guardrail_id": gid, "version": ver, "guardrail_name": name},
             )
             _resolved_guardrail = {"guardrail_id": gid, "version": ver}
             return GuardrailIdentity(guardrail_id=gid, version=ver)
@@ -312,7 +312,7 @@ def get_or_create_sra_guardrail(
             raise RuntimeError("create_guardrail response missing guardrailId")
         logger.info(
             "bedrock_guardrail_created",
-            extra={"guardrail_id": gid, "version": ver, "name": name},
+            extra={"guardrail_id": gid, "version": ver, "guardrail_name": name},
         )
         _resolved_guardrail = {"guardrail_id": gid, "version": ver}
         return GuardrailIdentity(guardrail_id=gid, version=ver)
