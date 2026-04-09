@@ -31,10 +31,7 @@ from smart_report_analyst.integrations.agui_stream import (
     agui_tool_call_start,
 )
 from smart_report_analyst.service.agent_trace.agui_mapper import (
-    DEFAULT_TOOL_TRACE_ACTIVITY_TYPE,
-    ToolTraceActivityState,
     TraceEventChannel,
-    trace_event_to_activity_snapshot_frame,
     trace_events_to_sse_frames,
 )
 from smart_report_analyst.service.agent_trace.events import TraceEvent
@@ -154,36 +151,16 @@ class StrandsCopilotAgent(Agent):
             description=description or "SBA loan analysis (Strands + Bedrock)",
         )
 
-    def _emit_pre_answer_trace_frames(
+    def _emit_trace_as_reasoning(
         self, raw: Any, *, reasoning_message_id: str
     ) -> Iterator[str]:
-        """Map tool trace to REASONING_* / STEP_* only before assistant text starts."""
+        """Map tool/model trace to AG-UI reasoning for the whole turn (single open message)."""
         if isinstance(raw, TraceEvent):
             yield from trace_events_to_sse_frames(
                 raw,
                 reasoning_message_id=reasoning_message_id,
                 channel=TraceEventChannel.PRE_ANSWER,
             )
-
-    def _emit_post_answer_tool_activity(
-        self,
-        raw: Any,
-        *,
-        activity_message_id: str,
-        tool_trace_state: ToolTraceActivityState,
-    ) -> Iterator[str]:
-        """
-        After assistant streaming starts, tool trace must not touch REASONING_*.
-        Emit ACTIVITY_SNAPSHOT (replace) for CopilotKit activity UI.
-        """
-        if not isinstance(raw, TraceEvent):
-            return
-        yield from trace_event_to_activity_snapshot_frame(
-            raw,
-            state=tool_trace_state,
-            message_id=activity_message_id,
-            activity_type=DEFAULT_TOOL_TRACE_ACTIVITY_TYPE,
-        )
 
     async def execute(  # pylint: disable=too-many-arguments
         self,
@@ -210,31 +187,26 @@ class StrandsCopilotAgent(Agent):
 
         message_id = str(uuid.uuid4())
         reasoning_message_id = str(uuid.uuid4())
-        tool_trace_activity_message_id = str(uuid.uuid4())
-        tool_trace_activity_state = ToolTraceActivityState()
         t0 = _ts_ms()
         yield agui_run_started(thread_id=thread_id, run_id=run_id, timestamp=t0)
+        for frame in [
+            agui_reasoning_start(message_id=reasoning_message_id, timestamp=t0),
+            agui_reasoning_message_start(
+                message_id=reasoning_message_id, timestamp=t0
+            ),
+            agui_step_started(step_name="strands_turn", timestamp=t0),
+        ]:
+            yield frame
 
         final_tool_result: dict[str, Any] = {}
         first_text_chunk = False
-        reasoning_shell: dict[str, bool] = {"open": False}
-
-        def _frames_open_reasoning(ts: int) -> list[str]:
-            if reasoning_shell["open"]:
-                return []
-            reasoning_shell["open"] = True
-            return [
-                agui_reasoning_start(message_id=reasoning_message_id, timestamp=ts),
-                agui_reasoning_message_start(
-                    message_id=reasoning_message_id, timestamp=ts
-                ),
-                agui_step_started(step_name="strands_turn", timestamp=ts),
-            ]
+        reasoning_shell_open = True
 
         def _frames_close_reasoning(ts: int) -> list[str]:
-            if not reasoning_shell["open"]:
+            nonlocal reasoning_shell_open
+            if not reasoning_shell_open:
                 return []
-            reasoning_shell["open"] = False
+            reasoning_shell_open = False
             return [
                 agui_step_finished(step_name="strands_turn", timestamp=ts),
                 agui_reasoning_message_end(
@@ -255,22 +227,11 @@ class StrandsCopilotAgent(Agent):
                     raw = event.get("data")
                     if not isinstance(raw, TraceEvent):
                         continue
-                    if not first_text_chunk:
-                        for frame in _frames_open_reasoning(_ts_ms()):
+                    for frame in self._emit_trace_as_reasoning(
+                        raw, reasoning_message_id=reasoning_message_id
+                    ):
+                        if frame:
                             yield frame
-                        for frame in self._emit_pre_answer_trace_frames(
-                            raw, reasoning_message_id=reasoning_message_id
-                        ):
-                            if frame:
-                                yield frame
-                    else:
-                        for frame in self._emit_post_answer_tool_activity(
-                            raw,
-                            activity_message_id=tool_trace_activity_message_id,
-                            tool_trace_state=tool_trace_activity_state,
-                        ):
-                            if frame:
-                                yield frame
                     continue
 
                 if et == "chunk":
@@ -279,8 +240,6 @@ class StrandsCopilotAgent(Agent):
                         if not first_text_chunk:
                             first_text_chunk = True
                             t1 = _ts_ms()
-                            for frame in _frames_close_reasoning(t1):
-                                yield frame
                             yield agui_text_message_start(
                                 message_id=message_id,
                                 role="assistant",
@@ -302,13 +261,14 @@ class StrandsCopilotAgent(Agent):
 
         if not first_text_chunk:
             t2 = _ts_ms()
-            for frame in _frames_close_reasoning(t2):
-                yield frame
             yield agui_text_message_start(
                 message_id=message_id, role="assistant", timestamp=t2
             )
 
-        yield agui_text_message_end(message_id=message_id, timestamp=_ts_ms())
+        t_end = _ts_ms()
+        for frame in _frames_close_reasoning(t_end):
+            yield frame
+        yield agui_text_message_end(message_id=message_id, timestamp=t_end)
 
         for frame in _yield_execute_sql_tool_events(
             thread_id=thread_id,

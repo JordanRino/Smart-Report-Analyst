@@ -178,7 +178,7 @@ frontend/src/
 ├── app/                        # Next.js App Router (layout, home page)
 ├── components/
 │   ├── ChatInterface.tsx       # CopilotChat, RenderMessage → ReasoningTraceMessage, execute_sql action
-│   ├── agent-trace/            # Collapsible reasoning / trace UI (ReasoningTraceMessage)
+│   ├── agent-trace/            # Collapsible Trace UI (ReasoningTraceMessage)
 │   ├── SqlPdfReport.tsx        # PDF fetch + preview overlay
 │   └── HistorySidebar.tsx      # Session list from /api/history
 ├── providers/
@@ -192,15 +192,15 @@ frontend/src/
 
 ---
 
-## Live agent trace (reasoning + steps)
+## Live agent trace (single reasoning card)
 
-During a turn, the server can surface **live** work while Strands is blocked in tools:
+During a turn, the server surfaces **live** tool/model trace in **one** open AG-UI **`reasoning`** message for the whole run:
 
 1. **`StrandsTurnState`** holds an `asyncio.Queue` and trace metadata (`run_id`, `thread_id`, `agent_name`) for the turn.
 2. **`retrieve_kb_context`** and **`execute_sql`** are async tools: they **`await`** the trace queue on the same event loop as **`run_stream`**. Blocking boto3 KB retrieve runs in **`asyncio.to_thread`** so OTel/context is not bridged with **`run_coroutine_threadsafe`**.
 3. **`run_stream`** merges the Strands `stream_async` iterator with the queue so trace events yield **`{"type":"trace","data": TraceEvent}`** interleaved with **`chunk`** events.
-4. **`StrandsCopilotAgent`** opens **`REASONING_*`** before the first assistant token, forwards trace rows through **`trace_events_to_sse_frames`**, then closes reasoning and starts **`TEXT_MESSAGE_*`** on the first text chunk.
-5. **Frontend** — `CopilotChat` **`RenderMessage`** renders `role === "reasoning"` via **`ReasoningTraceMessage`** (collapsible trace body). The default CopilotKit renderer still applies to other message types when our renderer returns `null`.
+4. **`StrandsCopilotAgent`** opens **`REASONING_*`** immediately after **`RUN_STARTED`**, appends **`REASONING_MESSAGE_CONTENT`** + **`STEP_*`** + **`CUSTOM`** from **`trace_events_to_sse_frames`** for **every** trace event (including after assistant text has started), then closes **`REASONING_*`** once at the end of the turn before **`TEXT_MESSAGE_END`**. Assistant text streams as **`TEXT_MESSAGE_*`** in parallel.
+5. **Frontend** — `CopilotChat` **`RenderMessage`** renders **`role === "reasoning"`** via **`ReasoningTraceMessage`** (single collapsible Trace).
 
 **Note:** The synthetic **`execute_sql`** AG-UI tool sequence remains the bridge for **`useCopilotAction`** (PDF widget). Trace lines describe **server-side** KB/SQL work; labels in the UI distinguish that from the report card.
 

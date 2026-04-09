@@ -165,23 +165,19 @@ def test_strands_copilot_agent_execute_uses_mock_run_stream(mock_run_stream: Mag
 
     assert "RUN_STARTED" in types
     assert "REASONING_START" in types
+    assert "TEXT_MESSAGE_CONTENT" in types
+    assert "ACTIVITY_SNAPSHOT" not in types
     step_starts = [e for e in events if e["type"] == "STEP_STARTED"]
     step_names = {e.get("stepName") for e in step_starts}
     assert "strands_turn" in step_names
     assert "tool:mock" in step_names
-    assert "TEXT_MESSAGE_CONTENT" in types
-    assert "ACTIVITY_SNAPSHOT" in types
-    activity = [e for e in events if e["type"] == "ACTIVITY_SNAPSHOT"]
-    assert len(activity) == 1
-    assert activity[0].get("activityType") == "smart_report_analyst.tool_trace"
-    content = activity[0].get("content") or {}
-    assert "Post-answer tool log line" in "\n".join(content.get("lines") or [])
     reasoning_deltas = "".join(
         e.get("delta") or ""
         for e in events
         if e["type"] == "REASONING_MESSAGE_CONTENT"
     )
     assert "Extended thinking line" in reasoning_deltas
+    assert "Post-answer tool log line" in reasoning_deltas
     assert "RUN_FINISHED" in types
 
     mock_run_stream.assert_called_once()

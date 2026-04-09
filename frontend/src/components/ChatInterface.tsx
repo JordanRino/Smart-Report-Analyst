@@ -10,16 +10,14 @@ import {
   type RenderMessageProps,
 } from "@copilotkit/react-ui";
 import { ActionRenderProps, useCopilotAction } from "@copilotkit/react-core";
-import type { ActivityMessage, ReasoningMessage } from "@copilotkit/shared";
+import type { ReasoningMessage } from "@copilotkit/shared";
 import { SqlPdfReport } from "@/components/SqlPdfReport";
-import { ActivityTraceCard } from "@/components/agent-trace/ActivityTraceCard";
-import { TOOL_TRACE_ACTIVITY_TYPE } from "@/components/agent-trace/constants";
 import { ReasoningTraceMessage } from "@/components/agent-trace/ReasoningTraceMessage";
 import { getApiPrefix } from "@/lib/env";
 
 /**
  * Match ``@copilotkit/react-ui`` default ``RenderMessage`` routing so user/assistant
- * still render when we only customize reasoning + tool-activity messages.
+ * still render when we only customize AG-UI reasoning (server tool trace).
  */
 function AgentRenderMessage(props: RenderMessageProps) {
   const {
@@ -47,15 +45,6 @@ function AgentRenderMessage(props: RenderMessageProps) {
     return (
       <ReasoningTraceMessage
         message={message as ReasoningMessage}
-        inProgress={Boolean(inProgress && isCurrentMessage)}
-      />
-    );
-  }
-
-  if (message.role === "activity" && message.activityType === TOOL_TRACE_ACTIVITY_TYPE) {
-    return (
-      <ActivityTraceCard
-        message={message as ActivityMessage}
         inProgress={Boolean(inProgress && isCurrentMessage)}
       />
     );
