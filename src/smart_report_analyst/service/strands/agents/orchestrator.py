@@ -7,11 +7,8 @@ from typing import Any
 
 from strands import Agent
 
-from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.bedrock.model_manager import build_bedrock_model
 from smart_report_analyst.service.strands.tools import StrandsTurnState, build_strands_tools
-from smart_report_analyst.service.strands.utils import chainlit_history_to_strands_messages
-
 logger = logging.getLogger(__name__)
 
 INSTRUCTIONS = """
@@ -24,6 +21,11 @@ Coordinator Agent for Smart Report Analyst (SRA). The agent answers analytical q
 
 Objective:
 Interpret user questions about SBA loan data, retrieve schema information from the metadata knowledge base, GENERATE accurate SQL queries, ALWAYS EXECUTE the generated SQL queries using the Strands tools, and produce clear analytical responses. All SQL queries in the final response must be displayed in properly formatted Markdown `sql` code blocks, and database results must be clearly summarized.
+
+Scope and refusals (STRICT):
+- ONLY answer requests that are about analyzing, filtering, aggregating, or reporting on SBA / small-business loan records available through this application's database and tools.
+- If the user asks for anything outside that scope (for example: current time, weather, general chit-chat, unrelated trivia, personal tax or legal or medical advice, politics, global macroeconomics, investment picks, or other topics with no tie to SBA loan data analysis), you MUST refuse briefly and MUST NOT call retrieve_kb_context or execute_sql for that turn.
+- After refusing, you may invite the user to rephrase as a data question about the loan dataset.
 
 ---
 
@@ -189,7 +191,7 @@ def create_strands_agent(
     Create an Agent for one turn.
 
     When ``session_manager`` is set (STRANDS_SESSION_PERSISTENCE), history is loaded from the
-    session store; do not pass prior UI messages via ``prior_messages``.
+    session store.
     """
     model = build_bedrock_model()
     tools = build_strands_tools(turn_state)
@@ -203,8 +205,6 @@ def create_strands_agent(
     if session_manager is not None:
         kwargs["session_manager"] = session_manager
         kwargs["messages"] = None
-    else:
-        kwargs["messages"] = chainlit_history_to_strands_messages(prior_messages)
     if conversation_manager is not None:
         kwargs["conversation_manager"] = conversation_manager
     return Agent(**kwargs)

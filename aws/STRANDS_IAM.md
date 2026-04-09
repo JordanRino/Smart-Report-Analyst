@@ -9,6 +9,18 @@ When `AGENT_BACKEND=strands`, the application principal (user, role, or task rol
 
 Scope `Resource` to your model or inference profile ARNs in production.
 
+### Bedrock Guardrails
+
+When `BEDROCK_GUARDRAIL_ENABLED` is true (default), the app resolves a guardrail by name (`list_guardrails`) or creates it (`create_guardrail`). The role needs:
+
+- `bedrock:ListGuardrails` (and typically `bedrock:GetGuardrail` if you extend the code)
+- `bedrock:CreateGuardrail` (first run or new name)
+- `bedrock:ApplyGuardrail` on the guardrail resource for inference (see [Guardrails permissions](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions.html))
+
+Set `BEDROCK_GUARDRAIL_ENABLED=false` for environments that must not provision or list guardrails.
+
+Helpers: `smart_report_analyst.service.bedrock.guardrail_config` (`get_or_create_sra_guardrail`, `build_sra_guardrail_create_request`, `create_sra_guardrail`).
+
 ## Knowledge Base retrieve
 
 Retriever logic lives in `smart_report_analyst.service.bedrock.kb_manager`. The app calls `bedrock-agent-runtime:Retrieve` with `BEDROCK_KNOWLEDGE_BASE_ID`.

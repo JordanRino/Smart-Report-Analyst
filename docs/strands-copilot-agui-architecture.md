@@ -11,48 +11,121 @@ End users chat in a **CopilotKit**-powered UI. Each turn is executed by a **Stra
 
 ---
 
-## High-level architecture
+## Architecture and Workflow for Conversations
+
+End-to-end flow for a single analyst question (high level, top → bottom):
+
+1. **CopilotKit UI (user query)** — User message in the Next.js chat; CopilotKit calls the configured runtime URL.
+2. **FastAPI layer** — CopilotKit remote runtime (agent execute, `info`, etc.) on the same app as other JSON routes.
+3. **Agent-User Interaction Protocol (AG-UI) events over Server-Sent Events (SSE)** — Response body is a stream of `data: {<json>}\n\n` frames; event types follow **AG-UI** (e.g. `RUN_*`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `REASONING_*`, `STEP_*`). CopilotKit parses this stream in the browser.
+4. **Classifier (guardrail)** — Rule-based **topic classifier** runs **before** the model turn; off-topic messages are refused without calling Bedrock.
+5. **Orchestrator (Strands agent)** — `StrandsCopilotAgent` maps the Strands turn into AG-UI frames; **`run_stream`** drives the Strands **`Agent`** (model + tools + optional file session / conversation managers).
+6. **Tools** (model-invoked):
+   - **`retrieve_kb_context`** → **Amazon Bedrock Knowledge Bases** retrieval, with a **Kendra Gen AI** index as a **data source** backing schema context and example SQL (including material related to **loan metadata** and **successful query** examples, per KB configuration).
+   - **`execute_sql`** → **Amazon RDS (MySQL)** — analytical **loan / SBA data** (primary tables the model queries for result sets).
 
 ```mermaid
 flowchart TB
-  subgraph client [Browser - Next.js]
-    UI[CopilotChat and app chrome]
-    CK[CopilotKit React SDK]
-    UI --> CK
+  subgraph L1["Layer 1 — Client (Next.js + CopilotKit)"]
+    UIQ[Chat UI: user query and stream consumer]
   end
 
-  subgraph api [Backend - FastAPI]
-    RT[CopilotKit runtime routes]
-    AG[StrandsCopilotAgent]
-    REST[REST APIs - PDF history feedback]
-    RT --> AG
+  subgraph L2["Layer 2 — FastAPI CopilotKit runtime"]
+    API[Agent execute / info and related routes]
   end
 
-  subgraph proto [Wire format]
-    SSE[AG-UI events over SSE]
+  subgraph L3["Layer 3 — Strands agent pipeline"]
+    CL[Topic classifier guardrail]
+    ORCH[StrandsCopilotAgent and run_stream]
   end
 
-  subgraph strands [Strands agent]
-    RUN[run_stream turn]
-    TOOLS[Tools - KB retrieve SQL execute]
-    SESS[File session storage]
-    RUN --> TOOLS
-    RUN --> SESS
+  subgraph L3S["Session and conversation managers"]
+    FS[FileSessionManager]
+    CONV[Conversation manager]
   end
 
-  subgraph data [Data]
-    MYSQL[(MySQL - SBA and app tables)]
-    BEDROCK[Amazon Bedrock]
+  subgraph L4["Layer 4 — Model-invoked tools"]
+    KB[retrieve_kb_context]
+    SQL[execute_sql]
   end
 
-  CK <-->|HTTP SSE JSON| RT
-  AG --> SSE
-  SSE --> CK
-  AG --> RUN
-  TOOLS --> MYSQL
-  RUN --> BEDROCK
-  CK --> REST
+  subgraph L5["Layer 5 — Data plane (AWS + RDS)"]
+    BKB[Bedrock Knowledge Base]
+    RDS1[(RDS MySQL: metadata and successful-query examples)]
+    RDS2[(RDS MySQL: loan / SBA analytics data)]
+  end
+
+  subgraph L5L["Local persistence"]
+    LOC[(Local session storage)]
+  end
+
+  UIQ <-->|HTTP request and AG-UI SSE stream| API
+  API --> CL
+  CL --> ORCH
+  ORCH --> FS
+  ORCH --> CONV
+  FS --> LOC
+  ORCH --> KB
+  ORCH --> SQL
+  KB --> BKB
+  BKB --> RDS1
+  SQL --> RDS2
 ```
+
+*Deployment note:* The KB does not typically open a live JDBC connection to RDS at retrieve time; **RDS1** represents content that is **indexed into** the KB (or otherwise aligned with app tables for metadata and stored examples), while **`execute_sql`** hits **RDS2** directly for runtime analytics.
+
+---
+
+## Architecture and Workflow for User Feedback and Report Generation
+
+These paths use the **same FastAPI app** but are **not** part of the AG-UI over **SSE (Server-Sent Events)** chat stream:
+
+1. **CopilotKit UI (user feedback)** — e.g. thumbs-up on a message; client POSTs to the API.
+2. **FastAPI** — Feedback route resolves the stored SQL snapshot and persists a **successful query** record.
+3. **RDS MySQL** — **Successful queries** updated for future retrieval / analytics.
+
+**PDF report:** the UI POSTs query + results to a **report** route; **FastAPI** uses **`service/report_generation/`** to build PDF bytes.
+
+```mermaid
+flowchart TB
+  subgraph F1["Layer 1 — Client (Next.js + CopilotKit)"]
+    FB[Thumbs-up feedback and PDF request UI]
+  end
+
+  subgraph F2["Layer 2 — FastAPI JSON routes"]
+    RF[Feedback route]
+    RP[Reports PDF route]
+  end
+
+  subgraph F3["Layer 3 — Service modules"]
+    FG[service/report_generation]
+  end
+
+  subgraph F4["Layer 4 — Persistence"]
+    RDS3[(RDS MySQL: successful queries)]
+  end
+
+  FB -->|POST| RF
+  FB -->|POST| RP
+  RP --> FG
+  RF --> RDS3
+```
+
+*These flows are plain HTTP/JSON; they do not use the AG-UI **SSE (Server-Sent Events)** stream.*
+
+---
+
+## Service modules (backend)
+
+Primary packages under `service/` for this product surface:
+
+| Module | Role |
+|--------|------|
+| **`service/strands/`** | Strands **orchestrator**: `agents/` (agent factory), `agent.py` (Copilot adapter), `runner.py`, `tools/` (KB + SQL), `session/`, `conversation/`, guardrails. |
+| **`service/report_generation/`** | PDF generation and request models used by the reports HTTP route. |
+| **`service/feedback/`** | Positive feedback handling and snapshot index (message id → SQL) for thumbs-up persistence. |
+
+Supporting: **`service/bedrock/`** (model + KB clients), **`service/persistence/mysql/`** (app data layer, SQL execution), **`integrations/`** (AG-UI over **SSE (Server-Sent Events)** helpers, CopilotKit wiring).
 
 ---
 
@@ -61,11 +134,10 @@ flowchart TB
 | Layer | Role |
 |--------|------|
 | **CopilotKit (client)** | Chat UI, thread id, agent name, optional public key for observability; calls the runtime URL. |
-| **CopilotKit (FastAPI)** | Registers the remote agent; handles agent execute, info, and related HTTP endpoints. |
+| **CopilotKit (FastAPI)** | Registers the remote agent; handles agent execute, `info`, and related HTTP endpoints. |
 | **StrandsCopilotAgent** | Maps one user turn into AG-UI frames: run lifecycle, streaming assistant text, synthetic `execute_sql` tool frames for the frontend, final state snapshot. |
-| **AG-UI helpers** | Build SSE `data: {...}` lines (`RUN_*`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, etc.) compatible with CopilotKit’s AG-UI client. |
-| **Strands** | Orchestrates the model, tools, and session persistence on disk (per thread). |
-| **REST beside Copilot** | PDF generation, chat history listing, positive feedback—same origin/CORS as the app, not part of the AG-UI stream. |
+| **AG-UI helpers** | Build **SSE (Server-Sent Events)** `data: {...}` lines (`RUN_*`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, etc.) compatible with CopilotKit’s AG-UI client. |
+| **Strands** | Orchestrates the Bedrock model, tools, and session persistence on disk (per thread). |
 
 ---
 
@@ -80,9 +152,9 @@ src/smart_report_analyst/
 ├── app.py                      # FastAPI application
 ├── config/                     # Settings and environment
 ├── routes/
-│   └── routes.py               # CopilotKit runtime mount, REST: PDF, history, feedback
+│   └── routes.py               # CopilotKit runtime mount; reports PDF; history; feedback
 ├── integrations/
-│   ├── agui_stream.py          # AG-UI SSE event builders
+│   ├── agui_stream.py          # AG-UI over SSE (Server-Sent Events) frame builders
 │   └── copilotkit.py           # CopilotKit remote endpoint + info HTML patch
 └── service/
     ├── strands/
@@ -131,6 +203,6 @@ frontend/src/
 
 - Agent adapter: `src/smart_report_analyst/service/strands/agent.py`  
 - AG-UI framing: `src/smart_report_analyst/integrations/agui_stream.py`  
-- Runtime registration: `src/smart_report_analyst/routes/routes.py` (CopilotKit + REST)  
+- Runtime registration: `src/smart_report_analyst/routes/routes.py` (CopilotKit runtime, reports, history, feedback)  
 - CopilotKit bridge: `src/smart_report_analyst/integrations/copilotkit.py`  
 - Frontend shell: `frontend/src/providers/CopilotRuntimeProvider.tsx`, `frontend/src/components/ChatInterface.tsx`

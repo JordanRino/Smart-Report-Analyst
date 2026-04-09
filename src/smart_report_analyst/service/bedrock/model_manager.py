@@ -7,6 +7,9 @@ from botocore.config import Config as BotocoreConfig
 from strands.models import BedrockModel
 
 from smart_report_analyst.config.settings import get_settings
+from smart_report_analyst.service.bedrock.guardrail_config import (
+    bedrock_model_guardrail_kwargs,
+)
 
 
 def build_bedrock_model() -> BedrockModel:
@@ -20,8 +23,11 @@ def build_bedrock_model() -> BedrockModel:
         connect_timeout=10,
         read_timeout=120,
     )
+    # Apply the guardrails once the we have access to perform: bedrock:ApplyGuardrail perms
+    # guardrail_kwargs = bedrock_model_guardrail_kwargs()
     return BedrockModel(
         model_id=model_id,
         region_name=settings.AWS_REGION,
         boto_client_config=boto_config,
+        # **guardrail_kwargs,
     )

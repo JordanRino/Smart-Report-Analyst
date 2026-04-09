@@ -31,6 +31,45 @@ class Settings(BaseSettings):
         validation_alias="BEDROCK_MODEL_ID",
     )
 
+    BEDROCK_GUARDRAIL_ENABLED: bool = Field(
+        default=True,
+        description=(
+            "When true, Strands BedrockModel resolves a guardrail by name (list_guardrails) or creates it "
+            "(create_guardrail). Set false for local dev without bedrock:ListGuardrails/CreateGuardrail."
+        ),
+        validation_alias="BEDROCK_GUARDRAIL_ENABLED",
+    )
+    BEDROCK_GUARDRAIL_NAME: str = Field(
+        default="smart-report-analyst-sba-scope",
+        description="Guardrail name used for list/create lookup (must match an existing guardrail name to reuse).",
+        validation_alias="BEDROCK_GUARDRAIL_NAME",
+    )
+    BEDROCK_GUARDRAIL_TRACE: Optional[str] = Field(
+        default=None,
+        description="Guardrail trace: enabled, disabled, or enabled_full (Strands BedrockModel).",
+        validation_alias="BEDROCK_GUARDRAIL_TRACE",
+    )
+    BEDROCK_GUARDRAIL_REDACT_INPUT: Optional[bool] = Field(
+        default=None,
+        description="When true, Strands overwrites blocked user input in history (see Strands BedrockModel).",
+        validation_alias="BEDROCK_GUARDRAIL_REDACT_INPUT",
+    )
+    BEDROCK_GUARDRAIL_REDACT_INPUT_MESSAGE: Optional[str] = Field(
+        default=None,
+        description="Replacement text when guardrail_redact_input is used.",
+        validation_alias="BEDROCK_GUARDRAIL_REDACT_INPUT_MESSAGE",
+    )
+    BEDROCK_GUARDRAIL_REDACT_OUTPUT: Optional[bool] = Field(
+        default=None,
+        description="When true, Strands can redact model output on guardrail intervention.",
+        validation_alias="BEDROCK_GUARDRAIL_REDACT_OUTPUT",
+    )
+    BEDROCK_GUARDRAIL_REDACT_OUTPUT_MESSAGE: Optional[str] = Field(
+        default=None,
+        description="Replacement text when guardrail_redact_output is used.",
+        validation_alias="BEDROCK_GUARDRAIL_REDACT_OUTPUT_MESSAGE",
+    )
+
     RETRIEVAL_MAX_RESULTS: int = Field(
         default=10,
         ge=1,
