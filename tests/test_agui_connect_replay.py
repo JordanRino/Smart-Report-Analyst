@@ -13,7 +13,7 @@ def _load_agui_stream_with_stub_reader():
     root = Path(__file__).resolve().parents[1] / "src"
     reader_mod = types.ModuleType("smart_report_analyst.service.strands.session.reader")
 
-    def get_copilot_state_for_thread(_thread_id: str) -> dict:
+    def get_copilot_state_for_thread(_thread_id: str, **_kwargs: object) -> dict:
         return {
             "messages": [
                 {

@@ -12,6 +12,7 @@ from smart_report_analyst.service.strands.session.manager import (
     _resolved_storage_dir,
     build_strands_session_manager,
 )
+from smart_report_analyst.service.strands.session.scoped import composite_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -134,9 +135,18 @@ def load_ordered_session_messages(session_id: str, agent_id: str) -> list[Sessio
     return sm.list_messages(session_id, agent_id)
 
 
-def get_copilot_state_for_thread(thread_id: str) -> dict[str, Any]:
+def get_copilot_state_for_thread(
+    thread_id: str,
+    *,
+    agent_name: str | None = None,
+) -> dict[str, Any]:
     """
     Build CopilotKit get_state payload (LangGraphAgent-compatible keys).
+
+    When ``agent_name`` is set, loads the isolated Strands session at
+    ``composite_session_id(thread_id, agent_name)`` (per-agent history).
+
+    When omitted, uses legacy layout ``session_<threadId>`` only (pre–multi-agent).
     """
     if not thread_id.strip():
         return {
@@ -147,6 +157,39 @@ def get_copilot_state_for_thread(thread_id: str) -> dict[str, Any]:
         }
 
     root = _resolved_storage_dir()
+
+    if agent_name:
+        strands_sid = composite_session_id(thread_id, agent_name)
+        path = _session_dir(root, strands_sid)
+        if not (path / "session.json").is_file():
+            return {
+                "threadId": thread_id,
+                "threadExists": False,
+                "state": {},
+                "messages": [],
+            }
+        try:
+            session_messages = load_ordered_session_messages(strands_sid, agent_name)
+        except Exception:
+            logger.exception(
+                "load_session_messages_failed session_id=%s agent_id=%s",
+                strands_sid,
+                agent_name,
+            )
+            return {
+                "threadId": thread_id,
+                "threadExists": True,
+                "state": {},
+                "messages": [],
+            }
+        messages = session_messages_to_copilot_messages(session_messages)
+        return {
+            "threadId": thread_id,
+            "threadExists": True,
+            "state": {},
+            "messages": messages,
+        }
+
     path = _session_dir(root, thread_id)
     if not (path / "session.json").is_file():
         return {

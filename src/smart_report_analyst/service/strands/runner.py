@@ -9,8 +9,10 @@ from typing import Any, AsyncIterator
 
 from smart_report_analyst.service.agent_trace.events import TraceEvent, TraceKind
 from smart_report_analyst.service.strands.agents import create_strands_agent
+from smart_report_analyst.service.strands.agents.prompts import ROUTER_INSTRUCTIONS
 from smart_report_analyst.service.strands.tools import StrandsTurnState
 from smart_report_analyst.service.strands.session import build_strands_session_manager
+from smart_report_analyst.service.strands.session.scoped import composite_session_id
 from smart_report_analyst.service.strands.conversation import (
     build_strands_conversation_manager,
 )
@@ -21,6 +23,12 @@ from smart_report_analyst.service.strands.guardrails import classify_user_messag
 logger = logging.getLogger(__name__)
 
 _STREAM_END = object()
+
+# CopilotKit-registered agent names
+AGENT_ROUTER = "sra_router_agent"
+AGENT_WLR_REPORTING = "wlr_reporting_agent"
+# Legacy name (same specialist as WLR)
+AGENT_LOAN_REPORT_ANALYST = "loan_report_analyst_agent"
 
 
 def _summarize_stream_event_for_log(event: Any) -> str:
@@ -160,16 +168,27 @@ async def run_stream(
     trace_queue: asyncio.Queue = asyncio.Queue()
     turn_state.trace_queue = trace_queue
     turn_state.trace_run_id = run_id or ""
+    strands_session_id = composite_session_id(session_id, agent_name)
+    # Trace + observability: keep logical Copilot thread id (matches feedback / client).
     turn_state.trace_thread_id = session_id
     turn_state.trace_agent_name = agent_name
 
-    sm = build_strands_session_manager(session_id)
+    sm = build_strands_session_manager(strands_session_id)
     cm = build_strands_conversation_manager()
-    agent = create_strands_agent(
-        turn_state,
-        session_manager=sm,
-        conversation_manager=cm,
-    )
+    if agent_name == AGENT_ROUTER:
+        agent = create_strands_agent(
+            turn_state,
+            session_manager=sm,
+            conversation_manager=cm,
+            system_prompt=ROUTER_INSTRUCTIONS.strip(),
+            with_tools=False,
+        )
+    else:
+        agent = create_strands_agent(
+            turn_state,
+            session_manager=sm,
+            conversation_manager=cm,
+        )
 
     last_result = None
     saw_text = False
@@ -286,7 +305,8 @@ def run_sync(
 
     turn_state = StrandsTurnState()
 
-    sm = build_strands_session_manager(session_id)
+    strands_sid = composite_session_id(session_id, AGENT_WLR_REPORTING)
+    sm = build_strands_session_manager(strands_sid)
     cm = build_strands_conversation_manager()
     agent = create_strands_agent(
         turn_state,

@@ -3,9 +3,11 @@ import { useApp } from "@/context/AppContext";
 import { useEffect, useState } from "react";
 import { PlusIcon, FileTextIcon, Loader2 } from "lucide-react";
 import { api, ChatSession } from "@/lib/api"; // Import the API layer
+import { DEFAULT_AGENT_ID } from "@/lib/agents";
 
 export function HistorySidebar() {
-  const { activeThreadId, setActiveThreadId, startNewConversation } = useApp();
+  const { activeThreadId, setActiveThreadId, startNewConversation, setPickedAgentId } =
+    useApp();
   const [threads, setThreads] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +52,10 @@ export function HistorySidebar() {
           threads.map((t) => (
             <button
               key={t.id}
-              onClick={() => setActiveThreadId(t.id)}
+              onClick={() => {
+                setPickedAgentId(DEFAULT_AGENT_ID);
+                setActiveThreadId(t.id);
+              }}
               className={`flex items-center gap-3 w-full p-3 rounded-lg text-sm transition-all ${
                 activeThreadId === t.id 
                 ? "bg-zinc-800 text-white shadow-inner ring-1 ring-zinc-700" 

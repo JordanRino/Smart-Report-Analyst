@@ -280,13 +280,16 @@ def agui_activity_snapshot(
     return agui_sse_event(_with_timestamp(body, timestamp))
 
 
-def iter_connect_replay_frames(*, thread_id: str, run_id: str) -> Iterator[str]:
+def iter_connect_replay_frames(
+    *, thread_id: str, run_id: str, agent_name: str | None = None
+) -> Iterator[str]:
     """
     Emit AG-UI events so CopilotKit ``connectAgent`` hydrates the chat from disk.
 
     The client clears messages before connect; without replay, history threads stayed empty.
+    ``agent_name`` selects isolated Strands storage for multi-agent threads.
     """
-    payload = get_copilot_state_for_thread(thread_id)
+    payload = get_copilot_state_for_thread(thread_id, agent_name=agent_name)
     yield agui_run_started(thread_id=thread_id, run_id=run_id)
 
     for msg in payload.get("messages") or []:

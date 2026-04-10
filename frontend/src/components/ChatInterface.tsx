@@ -13,7 +13,9 @@ import { ActionRenderProps, useCopilotAction } from "@copilotkit/react-core";
 import type { ReasoningMessage } from "@copilotkit/shared";
 import { SqlPdfReport } from "@/components/SqlPdfReport";
 import { ReasoningTraceMessage } from "@/components/agent-trace/ReasoningTraceMessage";
+import { AgentPicker } from "@/components/AgentPicker";
 import { getApiPrefix } from "@/lib/env";
+import { getAgentLabel } from "@/lib/agents";
 
 /**
  * Match ``@copilotkit/react-ui`` default ``RenderMessage`` routing so user/assistant
@@ -88,7 +90,7 @@ function AgentRenderMessage(props: RenderMessageProps) {
 }
 
 export function ChatInterface() {
-  const { effectiveThreadId } = useApp();
+  const { effectiveThreadId, pickedAgentId } = useApp();
 
   /** CopilotKit message thumbs-up → server snapshot (agent.py) → MySQL successful_queries. */
   const onFeedbackGiven = useCallback(
@@ -113,14 +115,16 @@ export function ChatInterface() {
     [onFeedbackGiven],
   );
 
-  const copilotLabels = useMemo(
-    () => ({
-      title: "SBA Loan Assistant",
-      initial:
-        "Hello! I can help you analyze SBA loan data. What would you like to see?",
-    }),
-    [],
-  );
+  const copilotLabels = useMemo(() => {
+    const base =
+      pickedAgentId === "sra_router_agent"
+        ? "Welcome to Smart Report Analyst. Pick an agent above (e.g. **WLR Reporting Agent**) for SBA loan SQL and reports, or ask how to get started."
+        : `You are chatting with **${getAgentLabel(pickedAgentId)}**. Ask for analysis, reports, or SQL-backed answers. Use the × on the agent chip to switch agents.`;
+    return {
+      title: "Smart Report Analyst",
+      initial: base,
+    };
+  }, [pickedAgentId]);
 
   useCopilotAction({
     name: "execute_sql",
@@ -180,8 +184,9 @@ export function ChatInterface() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
+      <AgentPicker />
       <CopilotChat
-        key={effectiveThreadId}
+        key={`${effectiveThreadId}:${pickedAgentId}`}
         instructions="Senior SBA Analyst. Always provide SQL results when asked. Be concise and professional."
         labels={copilotLabels}
         className="min-h-0 flex-1"

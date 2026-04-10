@@ -34,8 +34,16 @@ router = APIRouter()
 _copilot_sdk = CopilotKitRemoteEndpointAguiAgentsMap(
     agents=[
         StrandsCopilotAgent(
+            name="sra_router_agent",
+            description="Front-door assistant: helps you pick a specialist or explains available reporting agents.",
+        ),
+        StrandsCopilotAgent(
+            name="wlr_reporting_agent",
+            description="WLR reporting specialist: SBA loan analytics via knowledge base and SQL execution.",
+        ),
+        StrandsCopilotAgent(
             name="loan_report_analyst_agent",
-            description="Answers analytical questions about SBA loan data by generating SQL queries and generating reports of the records collected from the database.",
+            description="(Legacy) Same capability as WLR Reporting Agent — SBA loan SQL and reports.",
         ),
     ],
 )
@@ -158,7 +166,9 @@ async def copilotkit_agent_connect(agent_name: str, request: Request):
     run_id = body.get("runId") or str(uuid.uuid4())
 
     async def agui_connect_chunks():
-        for frame in iter_connect_replay_frames(thread_id=thread_id, run_id=run_id):
+        for frame in iter_connect_replay_frames(
+            thread_id=thread_id, run_id=run_id, agent_name=agent_name
+        ):
             yield frame
 
     return StreamingResponse(agui_connect_chunks(), media_type="text/event-stream")

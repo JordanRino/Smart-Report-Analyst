@@ -289,4 +289,4 @@ class StrandsCopilotAgent(Agent):
         *,
         thread_id: str,
     ) -> dict[str, Any]:
-        return get_copilot_state_for_thread(thread_id or "")
+        return get_copilot_state_for_thread(thread_id or "", agent_name=self.name)
