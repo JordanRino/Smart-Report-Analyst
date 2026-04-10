@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from typing import Any, Iterator, Optional
 
@@ -12,9 +13,15 @@ from copilotkit.agent import Agent
 from copilotkit.types import Message, MetaEvent
 
 from smart_report_analyst.integrations.agui_stream import (
+    agui_reasoning_end,
+    agui_reasoning_message_end,
+    agui_reasoning_message_start,
+    agui_reasoning_start,
     agui_run_finished,
     agui_run_started,
     agui_state_snapshot,
+    agui_step_finished,
+    agui_step_started,
     agui_text_message_content,
     agui_text_message_end,
     agui_text_message_start,
@@ -23,6 +30,11 @@ from smart_report_analyst.integrations.agui_stream import (
     agui_tool_call_result,
     agui_tool_call_start,
 )
+from smart_report_analyst.service.agent_trace.agui_mapper import (
+    TraceEventChannel,
+    trace_events_to_sse_frames,
+)
+from smart_report_analyst.service.agent_trace.events import TraceEvent
 from smart_report_analyst.service.feedback.snapshot_index import (
     register_feedback_snapshot,
 )
@@ -34,6 +46,10 @@ from smart_report_analyst.service.strands.session.reader import (
 logger = logging.getLogger(__name__)
 
 ACTION_EXECUTE_SQL = "execute_sql"
+
+
+def _ts_ms() -> int:
+    return int(time.time() * 1000)
 
 
 def _yield_execute_sql_tool_events(
@@ -74,17 +90,20 @@ def _yield_execute_sql_tool_events(
     register_feedback_snapshot(thread_id, parent_message_id, _fb_snap)
     register_feedback_snapshot(thread_id, result_message_id, _fb_snap)
 
+    t = _ts_ms()
     yield agui_tool_call_start(
         tool_call_id=tool_call_id,
         tool_call_name=ACTION_EXECUTE_SQL,
         parent_message_id=parent_message_id,
+        timestamp=t,
     )
-    yield agui_tool_call_args(tool_call_id=tool_call_id, delta=args_json)
-    yield agui_tool_call_end(tool_call_id=tool_call_id)
+    yield agui_tool_call_args(tool_call_id=tool_call_id, delta=args_json, timestamp=t)
+    yield agui_tool_call_end(tool_call_id=tool_call_id, timestamp=t)
     yield agui_tool_call_result(
         message_id=result_message_id,
         tool_call_id=tool_call_id,
         content=args_json,
+        timestamp=t,
     )
 
 
@@ -132,6 +151,17 @@ class StrandsCopilotAgent(Agent):
             description=description or "SBA loan analysis (Strands + Bedrock)",
         )
 
+    def _emit_trace_as_reasoning(
+        self, raw: Any, *, reasoning_message_id: str
+    ) -> Iterator[str]:
+        """Map tool/model trace to AG-UI reasoning for the whole turn (single open message)."""
+        if isinstance(raw, TraceEvent):
+            yield from trace_events_to_sse_frames(
+                raw,
+                reasoning_message_id=reasoning_message_id,
+                channel=TraceEventChannel.PRE_ANSWER,
+            )
+
     async def execute(  # pylint: disable=too-many-arguments
         self,
         *,
@@ -149,25 +179,76 @@ class StrandsCopilotAgent(Agent):
         run_id = str(uuid.uuid4())
 
         if not user_message.strip():
-            yield agui_run_started(thread_id=thread_id, run_id=run_id)
-            yield agui_state_snapshot(snapshot={"tool_result": {}})
-            yield agui_run_finished(thread_id=thread_id, run_id=run_id)
+            t = _ts_ms()
+            yield agui_run_started(thread_id=thread_id, run_id=run_id, timestamp=t)
+            yield agui_state_snapshot(snapshot={"tool_result": {}}, timestamp=t)
+            yield agui_run_finished(thread_id=thread_id, run_id=run_id, timestamp=t)
             return
 
         message_id = str(uuid.uuid4())
-
-        yield agui_run_started(thread_id=thread_id, run_id=run_id)
-        yield agui_text_message_start(message_id=message_id, role="assistant")
+        reasoning_message_id = str(uuid.uuid4())
+        t0 = _ts_ms()
+        yield agui_run_started(thread_id=thread_id, run_id=run_id, timestamp=t0)
+        for frame in [
+            agui_reasoning_start(message_id=reasoning_message_id, timestamp=t0),
+            agui_reasoning_message_start(
+                message_id=reasoning_message_id, timestamp=t0
+            ),
+            agui_step_started(step_name="strands_turn", timestamp=t0),
+        ]:
+            yield frame
 
         final_tool_result: dict[str, Any] = {}
+        first_text_chunk = False
+        reasoning_shell_open = True
+
+        def _frames_close_reasoning(ts: int) -> list[str]:
+            nonlocal reasoning_shell_open
+            if not reasoning_shell_open:
+                return []
+            reasoning_shell_open = False
+            return [
+                agui_step_finished(step_name="strands_turn", timestamp=ts),
+                agui_reasoning_message_end(
+                    message_id=reasoning_message_id, timestamp=ts
+                ),
+                agui_reasoning_end(message_id=reasoning_message_id, timestamp=ts),
+            ]
+
         try:
-            async for event in run_stream(user_message, thread_id):
+            async for event in run_stream(
+                user_message,
+                thread_id,
+                run_id=run_id,
+                agent_name=self.name,
+            ):
                 et = event.get("type")
+                if et == "trace":
+                    raw = event.get("data")
+                    if not isinstance(raw, TraceEvent):
+                        continue
+                    for frame in self._emit_trace_as_reasoning(
+                        raw, reasoning_message_id=reasoning_message_id
+                    ):
+                        if frame:
+                            yield frame
+                    continue
+
                 if et == "chunk":
                     data = event.get("data", "")
                     if isinstance(data, str) and data:
+                        if not first_text_chunk:
+                            first_text_chunk = True
+                            t1 = _ts_ms()
+                            yield agui_text_message_start(
+                                message_id=message_id,
+                                role="assistant",
+                                timestamp=t1,
+                            )
                         frame = agui_text_message_content(
-                            message_id=message_id, delta=data
+                            message_id=message_id,
+                            delta=data,
+                            timestamp=_ts_ms(),
                         )
                         if frame:
                             yield frame
@@ -178,7 +259,16 @@ class StrandsCopilotAgent(Agent):
             logger.exception("strands_copilotkit_agent_execute")
             raise
 
-        yield agui_text_message_end(message_id=message_id)
+        if not first_text_chunk:
+            t2 = _ts_ms()
+            yield agui_text_message_start(
+                message_id=message_id, role="assistant", timestamp=t2
+            )
+
+        t_end = _ts_ms()
+        for frame in _frames_close_reasoning(t_end):
+            yield frame
+        yield agui_text_message_end(message_id=message_id, timestamp=t_end)
 
         for frame in _yield_execute_sql_tool_events(
             thread_id=thread_id,
@@ -187,10 +277,12 @@ class StrandsCopilotAgent(Agent):
         ):
             yield frame
 
+        t3 = _ts_ms()
         yield agui_state_snapshot(
             snapshot={"tool_result": final_tool_result},
+            timestamp=t3,
         )
-        yield agui_run_finished(thread_id=thread_id, run_id=run_id)
+        yield agui_run_finished(thread_id=thread_id, run_id=run_id, timestamp=t3)
 
     async def get_state(
         self,

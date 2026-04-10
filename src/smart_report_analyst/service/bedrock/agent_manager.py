@@ -103,7 +103,7 @@ class BedrockManager:
                             if action_output and action_output.get("text"):
                                 try:
                                     tool_result = json.loads(action_output["text"])
-                                except:
+                                except (json.JSONDecodeError, TypeError, ValueError):
                                     tool_result = action_output["text"]
 
                                 yield {

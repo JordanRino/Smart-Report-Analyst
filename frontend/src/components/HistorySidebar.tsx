@@ -17,7 +17,7 @@ export function HistorySidebar() {
         setError(null);
         const data = await api.getHistory(); // Clean, centralized call
         setThreads(data);
-      } catch (err) {
+      } catch {
         setError("Failed to load history.");
       } finally {
         setLoading(false);

@@ -143,8 +143,6 @@ Supporting: **`service/bedrock/`** (model + KB clients), **`service/persistence/
 
 ## Repository layout (Strands / Copilot path)
 
-High-signal folders only. The package also contains **Chainlit** and **Streamlit** UIs under `ui/` and `service/streamlit/`; they are separate entry points from the Next.js + CopilotKit app.
-
 ### Backend — `src/smart_report_analyst/`
 
 ```text
@@ -157,16 +155,16 @@ src/smart_report_analyst/
 │   ├── agui_stream.py          # AG-UI over SSE (Server-Sent Events) frame builders
 │   └── copilotkit.py           # CopilotKit remote endpoint + info HTML patch
 └── service/
+    ├── agent_trace/            # TraceEvent + mapper → AG-UI (agent-agnostic)
     ├── strands/
     │   ├── agent.py            # StrandsCopilotAgent → AG-UI stream
-    │   ├── runner.py           # Async turn: chunks + final tool_result
-    │   ├── tools/              # execute_sql, KB retrieve (Bedrock KB)
+    │   ├── runner.py           # Async turn: merged Strands stream + trace queue → chunks + trace + tool_result
+    │   ├── tools/              # execute_sql, KB retrieve (Bedrock KB); tools enqueue TraceEvent while running
     │   ├── agents/             # Strands agent / orchestrator definitions
     │   ├── session/            # File-backed sessions (thread ↔ storage)
     │   └── conversation/       # Conversation manager wiring
     ├── bedrock/                # Model + knowledge base clients
-    ├── persistence/mysql/      # App SQL execution, Chainlit store, etc.
-    ├── report_generation/      # PDF build + HTTP request models
+    ├── persistence/mysql/      # App SQL execution.    ├── report_generation/      # PDF build + HTTP request models
     └── feedback/               # Positive feedback + snapshot index for thumbs-up
 ```
 
@@ -176,7 +174,8 @@ src/smart_report_analyst/
 frontend/src/
 ├── app/                        # Next.js App Router (layout, home page)
 ├── components/
-│   ├── ChatInterface.tsx       # CopilotChat, execute_sql action, observability hooks
+│   ├── ChatInterface.tsx       # CopilotChat, RenderMessage → ReasoningTraceMessage, execute_sql action
+│   ├── agent-trace/            # Collapsible Trace UI (ReasoningTraceMessage)
 │   ├── SqlPdfReport.tsx        # PDF fetch + preview overlay
 │   └── HistorySidebar.tsx      # Session list from /api/history
 ├── providers/
@@ -187,6 +186,20 @@ frontend/src/
     ├── env.ts                  # API base URL, Copilot runtime URL, public key
     └── api.ts                  # Shared fetch helpers (if used)
 ```
+
+---
+
+## Live agent trace (single reasoning card)
+
+During a turn, the server surfaces **live** tool/model trace in **one** open AG-UI **`reasoning`** message for the whole run:
+
+1. **`StrandsTurnState`** holds an `asyncio.Queue` and trace metadata (`run_id`, `thread_id`, `agent_name`) for the turn.
+2. **`retrieve_kb_context`** and **`execute_sql`** are async tools: they **`await`** the trace queue on the same event loop as **`run_stream`**. Blocking boto3 KB retrieve runs in **`asyncio.to_thread`** so OTel/context is not bridged with **`run_coroutine_threadsafe`**.
+3. **`run_stream`** merges the Strands `stream_async` iterator with the queue so trace events yield **`{"type":"trace","data": TraceEvent}`** interleaved with **`chunk`** events.
+4. **`StrandsCopilotAgent`** opens **`REASONING_*`** immediately after **`RUN_STARTED`**, appends **`REASONING_MESSAGE_CONTENT`** + **`STEP_*`** + **`CUSTOM`** from **`trace_events_to_sse_frames`** for **every** trace event (including after assistant text has started), then closes **`REASONING_*`** once at the end of the turn before **`TEXT_MESSAGE_END`**. Assistant text streams as **`TEXT_MESSAGE_*`** in parallel.
+5. **Frontend** — `CopilotChat` **`RenderMessage`** renders **`role === "reasoning"`** via **`ReasoningTraceMessage`** (single collapsible Trace).
+
+**Note:** The synthetic **`execute_sql`** AG-UI tool sequence remains the bridge for **`useCopilotAction`** (PDF widget). Trace lines describe **server-side** KB/SQL work; labels in the UI distinguish that from the report card.
 
 ---
 

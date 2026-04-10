@@ -1,7 +1,5 @@
 import logging
-import asyncio
 
-from smart_report_analyst.service.lambda_function.manager import LambdaManager
 from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.persistence.mysql.app_data_layer import app_data_layer
 

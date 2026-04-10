@@ -20,7 +20,7 @@ def _resolved_storage_dir() -> Path:
 
 def build_strands_session_manager(session_id: str) -> FileSessionManager:
     """
-    Session id should be the canonical chat id (e.g. Chainlit thread_id as str).
+    Session id should be the canonical chat id.
 
     Storage layout follows Strands FileSessionManager under ``storage_dir``.
     """

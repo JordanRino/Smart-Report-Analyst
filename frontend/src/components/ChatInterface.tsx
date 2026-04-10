@@ -2,10 +2,90 @@
 
 import { useCallback, useMemo } from "react";
 import { useApp } from "@/context/AppContext";
-import { CopilotChat } from "@copilotkit/react-ui";
+import {
+  AssistantMessage,
+  CopilotChat,
+  ImageRenderer,
+  UserMessage,
+  type RenderMessageProps,
+} from "@copilotkit/react-ui";
 import { ActionRenderProps, useCopilotAction } from "@copilotkit/react-core";
+import type { ReasoningMessage } from "@copilotkit/shared";
 import { SqlPdfReport } from "@/components/SqlPdfReport";
+import { ReasoningTraceMessage } from "@/components/agent-trace/ReasoningTraceMessage";
 import { getApiPrefix } from "@/lib/env";
+
+/**
+ * Match ``@copilotkit/react-ui`` default ``RenderMessage`` routing so user/assistant
+ * still render when we only customize AG-UI reasoning (server tool trace).
+ */
+function AgentRenderMessage(props: RenderMessageProps) {
+  const {
+    message,
+    messages,
+    inProgress,
+    index,
+    isCurrentMessage,
+    AssistantMessage: AssistantMessageOverride,
+    UserMessage: UserMessageOverride,
+    ImageRenderer: ImageRendererOverride,
+    onRegenerate,
+    onCopy,
+    onThumbsUp,
+    onThumbsDown,
+    messageFeedback,
+    markdownTagRenderers,
+  } = props;
+
+  const User = UserMessageOverride ?? UserMessage;
+  const Assistant = AssistantMessageOverride ?? AssistantMessage;
+  const Img = ImageRendererOverride ?? ImageRenderer;
+
+  if (message.role === "reasoning") {
+    return (
+      <ReasoningTraceMessage
+        message={message as ReasoningMessage}
+        inProgress={Boolean(inProgress && isCurrentMessage)}
+      />
+    );
+  }
+
+  switch (message.role) {
+    case "user":
+      return (
+        <User
+          key={index}
+          rawData={message}
+          data-message-role="user"
+          message={message}
+          ImageRenderer={Img}
+        />
+      );
+    case "assistant":
+      return (
+        <Assistant
+          key={index}
+          data-message-role="assistant"
+          subComponent={message.generativeUI?.()}
+          rawData={message}
+          message={message}
+          messages={messages}
+          isLoading={inProgress && isCurrentMessage && !message.content}
+          isGenerating={inProgress && isCurrentMessage && !!message.content}
+          isCurrentMessage={isCurrentMessage}
+          onRegenerate={() => onRegenerate?.(message.id)}
+          onCopy={onCopy}
+          onThumbsUp={onThumbsUp}
+          onThumbsDown={onThumbsDown}
+          feedback={messageFeedback?.[message.id] || null}
+          markdownTagRenderers={markdownTagRenderers}
+          ImageRenderer={Img}
+        />
+      );
+    default:
+      return null;
+  }
+}
 
 export function ChatInterface() {
   const { effectiveThreadId } = useApp();
@@ -106,6 +186,7 @@ export function ChatInterface() {
         labels={copilotLabels}
         className="min-h-0 flex-1"
         observabilityHooks={observabilityHooks}
+        RenderMessage={AgentRenderMessage}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 """Bedrock guardrail_config: create payload, get-or-create, model kwargs."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from smart_report_analyst.config.settings import Settings
 from smart_report_analyst.service.bedrock.guardrail_config import (
@@ -82,13 +82,17 @@ def test_create_sra_guardrail_calls_client():
     assert call_kw["name"] == "custom"
 
 
-def test_model_kwargs_empty_when_disabled():
+@patch("smart_report_analyst.service.bedrock.guardrail_config.get_settings")
+def test_model_kwargs_empty_when_disabled(mock_get_settings: MagicMock) -> None:
     reset_guardrail_cache_for_tests()
-    s = Settings.model_validate({"BEDROCK_GUARDRAIL_ENABLED": False})
-    assert bedrock_model_guardrail_kwargs(s) == {}
+    mock_get_settings.return_value = Settings.model_validate(
+        {"BEDROCK_GUARDRAIL_ENABLED": False}
+    )
+    assert bedrock_model_guardrail_kwargs() == {}
 
 
-def test_get_or_create_reuses_from_list():
+@patch("smart_report_analyst.service.bedrock.guardrail_config.get_settings")
+def test_get_or_create_reuses_from_list(mock_get_settings: MagicMock) -> None:
     reset_guardrail_cache_for_tests()
     client = MagicMock()
     client.list_guardrails.return_value = {
@@ -102,37 +106,38 @@ def test_get_or_create_reuses_from_list():
         ],
         "nextToken": None,
     }
-    s = Settings.model_validate(
+    mock_get_settings.return_value = Settings.model_validate(
         {
             "BEDROCK_GUARDRAIL_ENABLED": True,
             "BEDROCK_GUARDRAIL_NAME": "smart-report-analyst-sba-scope",
         }
     )
-    ident = get_or_create_sra_guardrail(s, client=client)
+    ident = get_or_create_sra_guardrail(client=client)
     assert ident.guardrail_id == "existing-id"
     assert ident.version == "DRAFT"
     client.create_guardrail.assert_not_called()
 
-    kw = bedrock_model_guardrail_kwargs(s)
+    kw = bedrock_model_guardrail_kwargs()
     assert kw["guardrail_id"] == "existing-id"
     client.create_guardrail.assert_not_called()
 
     reset_guardrail_cache_for_tests()
 
 
-def test_get_or_create_creates_when_missing():
+@patch("smart_report_analyst.service.bedrock.guardrail_config.get_settings")
+def test_get_or_create_creates_when_missing(mock_get_settings: MagicMock) -> None:
     reset_guardrail_cache_for_tests()
     client = MagicMock()
     client.list_guardrails.return_value = {"guardrails": [], "nextToken": None}
     client.create_guardrail.return_value = {"guardrailId": "new-id", "version": "DRAFT"}
 
-    s = Settings.model_validate(
+    mock_get_settings.return_value = Settings.model_validate(
         {
             "BEDROCK_GUARDRAIL_ENABLED": True,
             "BEDROCK_GUARDRAIL_NAME": "smart-report-analyst-sba-scope",
         }
     )
-    ident = get_or_create_sra_guardrail(s, client=client)
+    ident = get_or_create_sra_guardrail(client=client)
     assert ident.guardrail_id == "new-id"
     client.create_guardrail.assert_called_once()
 

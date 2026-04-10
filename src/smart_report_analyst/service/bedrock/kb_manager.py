@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
+from dataclasses import dataclass
 from typing import Any
 
 import boto3
@@ -43,6 +45,91 @@ def _extract_chunk_text(chunk: dict[str, Any]) -> str:
             return str(byte_content)
 
     return str(content)
+
+
+# --- Trace UI preview (matches ``retrieve`` chunk headers below) ----------------
+
+DEFAULT_MAX_CHUNKS_IN_TRACE = 2
+DEFAULT_MAX_CHARS_PER_CHUNK = 1_800
+
+
+@dataclass(frozen=True, slots=True)
+class KbChunk:
+    """One ``--- Chunk N (score=x) ---`` section from flattened retrieve output."""
+
+    index: int
+    score: str | None
+    body: str
+
+
+_CHUNK_HEADER = re.compile(
+    r"---\s*Chunk\s+(\d+)\s*(?:\(score=([\d.]+)\)\s*)?---\s*",
+    re.IGNORECASE,
+)
+
+
+def parse_kb_retrieval_chunks(raw: str) -> list[KbChunk]:
+    """
+    Split flattened KB retrieve text into chunk records.
+
+    If the string does not match chunk markers, returns a single synthetic chunk
+    with index 0 so callers can still truncate the body.
+    """
+    text = raw or ""
+    matches = list(_CHUNK_HEADER.finditer(text))
+    if not matches:
+        stripped = text.strip()
+        if not stripped:
+            return []
+        return [KbChunk(index=0, score=None, body=stripped)]
+
+    out: list[KbChunk] = []
+    for i, m in enumerate(matches):
+        idx = int(m.group(1))
+        score = m.group(2)
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[start:end].strip()
+        out.append(KbChunk(index=idx, score=score, body=body))
+    return out
+
+
+def format_kb_trace_preview(
+    raw: str,
+    *,
+    max_chunks: int = DEFAULT_MAX_CHUNKS_IN_TRACE,
+    max_chars_per_chunk: int = DEFAULT_MAX_CHARS_PER_CHUNK,
+) -> str | None:
+    """
+    Build a short multi-line preview for the trace panel.
+
+    Returns ``None`` if there is nothing to show.
+    """
+    chunks = parse_kb_retrieval_chunks(raw)
+    if not chunks:
+        return None
+
+    lines: list[str] = []
+    shown = chunks[:max(1, max_chunks)]
+    rest_count = max(0, len(chunks) - len(shown))
+
+    for ch in shown:
+        header = f"--- Chunk {ch.index}"
+        if ch.score is not None:
+            header += f" (score={ch.score})"
+        header += " ---"
+        lines.append(header)
+        body = ch.body.strip()
+        if len(body) > max_chars_per_chunk:
+            body = body[: max_chars_per_chunk - 3].rstrip() + "..."
+        lines.append(body)
+        lines.append("")
+
+    if rest_count:
+        lines.append(f"… {rest_count} more chunk(s) not shown (truncated).")
+
+    result = "\n".join(lines).strip()
+    return result or None
 
 
 class KnowledgeBaseRetriever:
