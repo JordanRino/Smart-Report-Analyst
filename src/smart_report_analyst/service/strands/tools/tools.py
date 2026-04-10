@@ -42,10 +42,16 @@ class StrandsTurnState:
     trace_thread_id: str = ""
     trace_agent_name: str = ""
     _trace_step_seq: int = field(default=0, repr=False)
+    _tool_step_seq: int = field(default=0, repr=False)
 
     def _next_step_id(self) -> int:
         self._trace_step_seq += 1
         return self._trace_step_seq
+
+    def next_tool_step_name(self, tool: str) -> str:
+        """Unique AG-UI step name per invocation (client forbids duplicate active stepName)."""
+        self._tool_step_seq += 1
+        return f"tool:{tool}:{self._tool_step_seq}"
 
     def _make_trace_event(self, kind: TraceKind, payload: dict[str, Any]) -> TraceEvent | None:
         if not self.trace_run_id or self.trace_queue is None:
@@ -89,8 +95,9 @@ def build_strands_tools(turn_state: StrandsTurnState) -> list:
             Concatenated retrieval passages for the model to use.
         """
         t0 = _now_ms()
+        step_name = turn_state.next_tool_step_name("retrieve_kb_context")
         await turn_state.emit_trace_async(
-            TraceKind.STEP_STARTED, {"step_name": "tool:retrieve_kb_context"}
+            TraceKind.STEP_STARTED, {"step_name": step_name}
         )
         await turn_state.emit_trace_async(
             TraceKind.REASONING_LINE,
@@ -107,7 +114,7 @@ def build_strands_tools(turn_state: StrandsTurnState) -> list:
             return raw
         finally:
             await turn_state.emit_trace_async(
-                TraceKind.STEP_FINISHED, {"step_name": "tool:retrieve_kb_context"}
+                TraceKind.STEP_FINISHED, {"step_name": step_name}
             )
             dt = _now_ms() - t0
             if dt >= 0:
@@ -133,8 +140,9 @@ def build_strands_tools(turn_state: StrandsTurnState) -> list:
             JSON object with executed_sql, results, row_count, refined_user_question, to_store.
         """
         t0 = _now_ms()
+        step_name = turn_state.next_tool_step_name("execute_sql")
         await turn_state.emit_trace_async(
-            TraceKind.STEP_STARTED, {"step_name": "tool:execute_sql"}
+            TraceKind.STEP_STARTED, {"step_name": step_name}
         )
         await turn_state.emit_trace_async(
             TraceKind.REASONING_LINE,
@@ -170,7 +178,7 @@ def build_strands_tools(turn_state: StrandsTurnState) -> list:
             return err
         finally:
             await turn_state.emit_trace_async(
-                TraceKind.STEP_FINISHED, {"step_name": "tool:execute_sql"}
+                TraceKind.STEP_FINISHED, {"step_name": step_name}
             )
             dt = _now_ms() - t0
             if dt >= 0:

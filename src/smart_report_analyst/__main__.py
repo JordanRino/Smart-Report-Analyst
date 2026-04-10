@@ -25,6 +25,8 @@ def main():
     # Root DEBUG would otherwise flood stdout with botocore parsers / HTTP wire logs.
     for _name in ("botocore", "boto3", "urllib3", "s3transfer"):
         logging.getLogger(_name).setLevel(logging.WARNING)
+    # Strands Bedrock client logs full model requests at DEBUG (tokens, tool I/O).
+    logging.getLogger("strands.models.bedrock").setLevel(logging.WARNING)
 
     parser = argparse.ArgumentParser(description="Smart Report Analyst")
 
