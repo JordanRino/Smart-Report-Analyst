@@ -60,19 +60,13 @@ def _bedrock_trace_lines_from_model_stream_chunk_event(event: Any) -> list[str]:
         md = inner.get("metadata")
         if isinstance(md, dict):
             usage = md.get("usage")
-            metrics = md.get("metrics")
             u = usage if isinstance(usage, dict) else {}
-            m = metrics if isinstance(metrics, dict) else {}
             in_t = u.get("inputTokens")
             out_t = u.get("outputTokens")
             tot_t = u.get("totalTokens")
-            parts = [
-                f"usage: input_tokens={in_t}  output_tokens={out_t}  total_tokens={tot_t}",
-            ]
-            lat = m.get("latencyMs")
-            if lat is not None:
-                parts.append(f"metrics: latency_ms={lat}")
-            lines.append(" ".join(parts) + "\n")
+            lines.append(
+                f"usage: input_tokens={in_t}  output_tokens={out_t}  total_tokens={tot_t}\n"
+            )
     return lines
 
 
@@ -209,7 +203,10 @@ async def run_stream(
                     step_id=stream_trace_seq,
                     ts_ms=int(time.time() * 1000),
                     kind=TraceKind.REASONING_LINE,
-                    payload={"text": line},
+                    payload={
+                        "text": line,
+                        "trace_elapsed_ms": turn_state.mark_trace_elapsed_ms(),
+                    },
                 ),
             }
 

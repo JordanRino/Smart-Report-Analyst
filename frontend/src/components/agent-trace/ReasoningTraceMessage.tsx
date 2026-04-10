@@ -2,6 +2,8 @@
 
 import type { ReasoningMessage } from "@copilotkit/shared";
 import { useState } from "react";
+import { parseTraceLine } from "@/components/agent-trace/parseTraceLinePrefix";
+import { TraceClockIcon } from "@/components/agent-trace/TraceClockIcon";
 
 type Props = {
   message: ReasoningMessage;
@@ -9,8 +11,35 @@ type Props = {
   inProgress?: boolean;
 };
 
+function TraceLineRow({ line }: { line: string }) {
+  const parsed = parseTraceLine(line);
+  if (parsed.kind === "plain") {
+    return (
+      <div className="whitespace-pre-wrap break-words">
+        {parsed.body || "\u00a0"}
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 whitespace-pre-wrap break-words">
+      <span
+        className="inline-flex shrink-0 items-center gap-0.5 text-zinc-500 dark:text-zinc-400"
+        title={`${parsed.elapsedMs} ms since trace start`}
+      >
+        <TraceClockIcon className="shrink-0 opacity-80" />
+        <span className="tabular-nums">{parsed.elapsedMs} ms</span>
+      </span>
+      <span className="min-w-0 flex-1 text-zinc-700 dark:text-zinc-300">
+        {parsed.body}
+      </span>
+    </div>
+  );
+}
+
 export function ReasoningTraceMessage({ message, inProgress }: Props) {
   const [open, setOpen] = useState(false);
+  const raw = message.content || "—";
+  const lines = raw === "—" ? ["—"] : raw.split("\n");
 
   return (
     <details
@@ -27,11 +56,14 @@ export function ReasoningTraceMessage({ message, inProgress }: Props) {
         </span>
       </summary>
       <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-700">
-        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
-          {message.content || "—"}
-        </pre>
+        <div className="max-h-64 space-y-0.5 overflow-auto font-mono text-xs leading-relaxed">
+          {lines.map((line, i) => (
+            <TraceLineRow key={i} line={line} />
+          ))}
+        </div>
         <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-500">
-          Server-side workflow (knowledge search, SQL). Full results appear in the assistant reply and report widget.
+          Clock + ms is elapsed time since the first trace line of this turn (server). Token counts are from
+          Bedrock.
         </p>
       </div>
     </details>

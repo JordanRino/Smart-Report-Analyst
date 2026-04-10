@@ -30,8 +30,7 @@ def test_chunk_event_metadata_only() -> None:
         }
     )
     assert lines == [
-        "usage: input_tokens=47  output_tokens=20  total_tokens=67 "
-        "metrics: latency_ms=100.0\n"
+        "usage: input_tokens=47  output_tokens=20  total_tokens=67\n",
     ]
 
 

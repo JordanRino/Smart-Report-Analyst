@@ -41,6 +41,7 @@ class StrandsTurnState:
     trace_run_id: str = ""
     trace_thread_id: str = ""
     trace_agent_name: str = ""
+    trace_started_ms: int = 0
     _trace_step_seq: int = field(default=0, repr=False)
     _tool_step_seq: int = field(default=0, repr=False)
 
@@ -52,6 +53,14 @@ class StrandsTurnState:
         """Unique AG-UI step name per invocation (client forbids duplicate active stepName)."""
         self._tool_step_seq += 1
         return f"tool:{tool}:{self._tool_step_seq}"
+
+    def mark_trace_elapsed_ms(self) -> int:
+        """Ms since first ``REASONING_LINE`` of this turn (first line returns 0)."""
+        now = _now_ms()
+        if self.trace_started_ms == 0:
+            self.trace_started_ms = now
+            return 0
+        return max(0, now - self.trace_started_ms)
 
     def _make_trace_event(self, kind: TraceKind, payload: dict[str, Any]) -> TraceEvent | None:
         if not self.trace_run_id or self.trace_queue is None:
@@ -67,6 +76,8 @@ class StrandsTurnState:
         )
 
     async def emit_trace_async(self, kind: TraceKind, payload: dict[str, Any]) -> None:
+        if kind == TraceKind.REASONING_LINE:
+            payload = {**payload, "trace_elapsed_ms": self.mark_trace_elapsed_ms()}
         ev = self._make_trace_event(kind, payload)
         if ev is None or self.trace_queue is None:
             return

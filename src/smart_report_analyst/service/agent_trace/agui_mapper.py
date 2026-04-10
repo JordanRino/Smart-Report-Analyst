@@ -14,6 +14,15 @@ from smart_report_analyst.service.agent_trace.events import TraceEvent, TraceKin
 DEFAULT_TOOL_TRACE_ACTIVITY_TYPE = "smart_report_analyst.tool_trace"
 
 
+def _reasoning_line_delta(ev: TraceEvent, text: str) -> str:
+    """Machine-readable elapsed-ms prefix for ``REASONING_LINE`` (UI may swap for a clock)."""
+    body = text if text.endswith("\n") else f"{text}\n"
+    raw = ev.payload.get("trace_elapsed_ms")
+    if isinstance(raw, int) and raw >= 0:
+        return f"[[trace:{raw}ms]] {body}"
+    return body
+
+
 @dataclass
 class ToolTraceActivityState:
     """Turn-scoped state for ``ACTIVITY_SNAPSHOT`` with ``replace=True``."""
@@ -123,7 +132,7 @@ def _map_one(
             return
         yield agui_stream.agui_reasoning_message_content(
             message_id=reasoning_message_id,
-            delta=text if text.endswith("\n") else f"{text}\n",
+            delta=_reasoning_line_delta(ev, text),
             timestamp=ts,
         )
     elif ev.kind == TraceKind.MODEL_REASONING_DELTA:

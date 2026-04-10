@@ -108,9 +108,7 @@ def test_run_stream_merged_trace_and_chunks_without_bedrock(
         if isinstance(e, TraceEvent) and e.kind == TraceKind.REASONING_LINE
     ]
     assert "stop_reason=tool_use\n" in usage_lines
-    assert any(
-        "input_tokens=10" in t and "latency_ms=99.0" in t for t in usage_lines
-    )
+    assert any("input_tokens=10" in t and "total_tokens=15" in t for t in usage_lines)
 
     chunks = [r["data"] for r in rows if r["type"] == "chunk"]
     assert chunks == ["mock-token"]

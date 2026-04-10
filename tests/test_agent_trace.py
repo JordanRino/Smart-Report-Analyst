@@ -51,6 +51,43 @@ def test_trace_events_model_reasoning_delta_maps_like_reasoning_line() -> None:
     body = json.loads(frames[0].replace("data:", "").strip())
     assert body["type"] == "REASONING_MESSAGE_CONTENT"
     assert body["messageId"] == rid
+    assert body["delta"] == "model reasoning bit\n"
+
+
+def test_trace_events_reasoning_line_includes_elapsed_ms_prefix_when_payload_set() -> None:
+    from smart_report_analyst.service.agent_trace.agui_mapper import trace_events_to_sse_frames
+
+    rid = "reasoning-1"
+    ev = TraceEvent(
+        run_id="r1",
+        thread_id="t1",
+        agent_name="a",
+        step_id=2,
+        ts_ms=50,
+        kind=TraceKind.REASONING_LINE,
+        payload={"text": "usage: input_tokens=1\n", "trace_elapsed_ms": 1234},
+    )
+    frames = list(trace_events_to_sse_frames(ev, reasoning_message_id=rid))
+    body = json.loads(frames[0].replace("data:", "").strip())
+    assert body["delta"] == "[[trace:1234ms]] usage: input_tokens=1\n"
+
+
+def test_trace_events_reasoning_line_plain_when_no_elapsed_payload() -> None:
+    from smart_report_analyst.service.agent_trace.agui_mapper import trace_events_to_sse_frames
+
+    rid = "reasoning-1"
+    ev = TraceEvent(
+        run_id="r1",
+        thread_id="t1",
+        agent_name="a",
+        step_id=2,
+        ts_ms=50,
+        kind=TraceKind.REASONING_LINE,
+        payload={"text": "no elapsed key\n"},
+    )
+    frames = list(trace_events_to_sse_frames(ev, reasoning_message_id=rid))
+    body = json.loads(frames[0].replace("data:", "").strip())
+    assert body["delta"] == "no elapsed key\n"
 
 
 def test_trace_events_post_answer_skips_model_reasoning_delta() -> None:
