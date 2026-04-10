@@ -49,17 +49,18 @@ def test_run_stream_merged_trace_and_chunks_without_bedrock(
 
         class _FakeAgent:
             async def stream_async(self, _user_message: str):
+                yield {"event": {"messageStop": {"stopReason": "tool_use"}}}
                 yield {
-                    "stop": (
-                        "tool_use",
-                        {"role": "assistant", "content": []},
-                        {
-                            "inputTokens": 10,
-                            "outputTokens": 5,
-                            "totalTokens": 15,
-                        },
-                        {"latencyMs": 99.0},
-                    )
+                    "event": {
+                        "metadata": {
+                            "usage": {
+                                "inputTokens": 10,
+                                "outputTokens": 5,
+                                "totalTokens": 15,
+                            },
+                            "metrics": {"latencyMs": 99.0},
+                        }
+                    }
                 }
                 yield {"reasoningText": "bedrock reasoning delta"}
                 await turn_state.trace_queue.put(
@@ -106,11 +107,9 @@ def test_run_stream_merged_trace_and_chunks_without_bedrock(
         for e in trace_events
         if isinstance(e, TraceEvent) and e.kind == TraceKind.REASONING_LINE
     ]
+    assert "stop_reason=tool_use\n" in usage_lines
     assert any(
-        "stop_reason=tool_use" in t
-        and "input_tokens=10" in t
-        and "latency_ms=99.0" in t
-        for t in usage_lines
+        "input_tokens=10" in t and "latency_ms=99.0" in t for t in usage_lines
     )
 
     chunks = [r["data"] for r in rows if r["type"] == "chunk"]

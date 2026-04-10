@@ -1,53 +1,56 @@
-"""Bedrock usage helpers on ``runner`` (Strands ModelStopReason)."""
+"""Bedrock trace lines from Strands ``ModelStreamChunkEvent`` (raw ConverseStream chunks)."""
 
 from __future__ import annotations
 
 from smart_report_analyst.service.strands.runner import (
-    _format_bedrock_usage_trace,
-    _try_extract_model_stop_payload,
+    _bedrock_trace_lines_from_model_stream_chunk_event,
 )
 
 
-def test_try_extract_model_stop_payload_accepts_strands_shape() -> None:
-    ev = {
-        "stop": (
-            "end_turn",
-            {"role": "assistant", "content": []},
-            {"inputTokens": 47, "outputTokens": 20, "totalTokens": 67},
-            {"latencyMs": 100.0},
-        )
-    }
-    out = _try_extract_model_stop_payload(ev)
-    assert out is not None
-    reason, usage, metrics = out
-    assert reason == "end_turn"
-    assert usage["totalTokens"] == 67
-    assert metrics["latencyMs"] == 100.0
-
-
-def test_try_extract_model_stop_payload_rejects_plain_dict() -> None:
-    assert _try_extract_model_stop_payload({"data": "x"}) is None
-    assert _try_extract_model_stop_payload({"stop": "bad"}) is None
-
-
-def test_format_bedrock_usage_trace_one_line() -> None:
-    text = _format_bedrock_usage_trace(
-        "tool_use",
-        {"inputTokens": 47, "outputTokens": 20, "totalTokens": 67},
-        {"latencyMs": 100.0},
+def test_chunk_event_message_stop_only() -> None:
+    lines = _bedrock_trace_lines_from_model_stream_chunk_event(
+        {"event": {"messageStop": {"stopReason": "tool_use"}}}
     )
-    assert text == (
-        "stop_reason=tool_use "
+    assert lines == ["stop_reason=tool_use\n"]
+
+
+def test_chunk_event_metadata_only() -> None:
+    lines = _bedrock_trace_lines_from_model_stream_chunk_event(
+        {
+            "event": {
+                "metadata": {
+                    "usage": {
+                        "inputTokens": 47,
+                        "outputTokens": 20,
+                        "totalTokens": 67,
+                    },
+                    "metrics": {"latencyMs": 100.0},
+                }
+            }
+        }
+    )
+    assert lines == [
         "usage: input_tokens=47  output_tokens=20  total_tokens=67 "
         "metrics: latency_ms=100.0\n"
-    )
+    ]
 
 
-def test_format_bedrock_usage_trace_omits_metrics_when_no_latency() -> None:
-    text = _format_bedrock_usage_trace(
-        "end_turn",
-        {"inputTokens": 1, "outputTokens": 2, "totalTokens": 3},
-        {},
+def test_chunk_event_both_message_stop_and_metadata_one_frame() -> None:
+    lines = _bedrock_trace_lines_from_model_stream_chunk_event(
+        {
+            "event": {
+                "messageStop": {"stopReason": "end_turn"},
+                "metadata": {
+                    "usage": {"inputTokens": 1, "outputTokens": 2, "totalTokens": 3},
+                    "metrics": {},
+                },
+            }
+        }
     )
-    assert "metrics:" not in text
-    assert "stop_reason=end_turn" in text
+    assert lines == ["stop_reason=end_turn\n", "usage: input_tokens=1  output_tokens=2  total_tokens=3\n"]
+
+
+def test_chunk_event_rejects_non_model_stream_shape() -> None:
+    assert _bedrock_trace_lines_from_model_stream_chunk_event({"data": "x"}) == []
+    assert _bedrock_trace_lines_from_model_stream_chunk_event({"event": "bad"}) == []
+    assert _bedrock_trace_lines_from_model_stream_chunk_event({"event": {}, "extra": 1}) == []

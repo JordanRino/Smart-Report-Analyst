@@ -40,43 +40,40 @@ def _validate_strands_settings() -> None:
         raise ValueError("BEDROCK_KNOWLEDGE_BASE_ID is required when AGENT_BACKEND=strands")
 
 
-def _try_extract_model_stop_payload(
-    event: Any,
-) -> tuple[Any, dict[str, Any], dict[str, Any]] | None:
+def _bedrock_trace_lines_from_model_stream_chunk_event(event: Any) -> list[str]:
     """
-    Strands yields :class:`~strands.types._events.ModelStopReason` (``dict`` subclass)
-    with ``stop`` = ``(stop_reason, message, usage, metrics)`` after each model stream
-    completes — matching Bedrock's final ``metadata`` chunk.
+    Strands forwards Bedrock ConverseStream frames as :class:`~strands.types._events.ModelStreamChunkEvent`,
+    a dict with a single ``event`` key holding the raw chunk (``messageStop``, ``metadata``, …).
+    Emit separate lines for ``messageStop`` vs ``metadata`` so stop_reason and usage are never cross-buffered.
     """
-    if not isinstance(event, dict) or "stop" not in event:
-        return None
-    stop = event.get("stop")
-    if not isinstance(stop, tuple) or len(stop) < 4:
-        return None
-    stop_reason, _message, usage, metrics = stop[0], stop[1], stop[2], stop[3]
-    if not isinstance(usage, dict) or not isinstance(metrics, dict):
-        return None
-    return (stop_reason, usage, metrics)
-
-
-def _format_bedrock_usage_trace(
-    stop_reason: Any,
-    usage: dict[str, Any],
-    metrics: dict[str, Any],
-) -> str:
-    """One-line trace for AG-UI reasoning (Bedrock ConverseStream metadata)."""
-    sr = str(stop_reason) if stop_reason is not None else "unknown"
-    in_t = usage.get("inputTokens")
-    out_t = usage.get("outputTokens")
-    tot_t = usage.get("totalTokens")
-    parts = [
-        f"stop_reason={sr}",
-        f"usage: input_tokens={in_t}  output_tokens={out_t}  total_tokens={tot_t}",
-    ]
-    lat = metrics.get("latencyMs")
-    if lat is not None:
-        parts.append(f"metrics: latency_ms={lat}")
-    return " ".join(parts) + "\n"
+    if not isinstance(event, dict) or set(event.keys()) != {"event"}:
+        return []
+    inner = event.get("event")
+    if not isinstance(inner, dict):
+        return []
+    lines: list[str] = []
+    if "messageStop" in inner:
+        ms = inner.get("messageStop")
+        if isinstance(ms, dict) and ms.get("stopReason") is not None:
+            lines.append(f"stop_reason={ms['stopReason']}\n")
+    if "metadata" in inner:
+        md = inner.get("metadata")
+        if isinstance(md, dict):
+            usage = md.get("usage")
+            metrics = md.get("metrics")
+            u = usage if isinstance(usage, dict) else {}
+            m = metrics if isinstance(metrics, dict) else {}
+            in_t = u.get("inputTokens")
+            out_t = u.get("outputTokens")
+            tot_t = u.get("totalTokens")
+            parts = [
+                f"usage: input_tokens={in_t}  output_tokens={out_t}  total_tokens={tot_t}",
+            ]
+            lat = m.get("latencyMs")
+            if lat is not None:
+                parts.append(f"metrics: latency_ms={lat}")
+            lines.append(" ".join(parts) + "\n")
+    return lines
 
 
 async def _anext_or_sentinel(aiter: AsyncIterator[Any]) -> Any:
@@ -201,9 +198,7 @@ async def run_stream(
             non_dict_event_count += 1
             continue
 
-        stop_payload = _try_extract_model_stop_payload(event)
-        if stop_payload is not None:
-            stop_reason, usage, metrics = stop_payload
+        for line in _bedrock_trace_lines_from_model_stream_chunk_event(event):
             stream_trace_seq += 1
             yield {
                 "type": "trace",
@@ -214,11 +209,7 @@ async def run_stream(
                     step_id=stream_trace_seq,
                     ts_ms=int(time.time() * 1000),
                     kind=TraceKind.REASONING_LINE,
-                    payload={
-                        "text": _format_bedrock_usage_trace(
-                            stop_reason, usage, metrics
-                        ),
-                    },
+                    payload={"text": line},
                 ),
             }
 
