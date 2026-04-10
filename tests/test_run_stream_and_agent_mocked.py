@@ -49,6 +49,18 @@ def test_run_stream_merged_trace_and_chunks_without_bedrock(
 
         class _FakeAgent:
             async def stream_async(self, _user_message: str):
+                yield {
+                    "stop": (
+                        "tool_use",
+                        {"role": "assistant", "content": []},
+                        {
+                            "inputTokens": 10,
+                            "outputTokens": 5,
+                            "totalTokens": 15,
+                        },
+                        {"latencyMs": 99.0},
+                    )
+                }
                 yield {"reasoningText": "bedrock reasoning delta"}
                 await turn_state.trace_queue.put(
                     TraceEvent(
@@ -89,6 +101,17 @@ def test_run_stream_merged_trace_and_chunks_without_bedrock(
     kinds = [e.kind for e in trace_events if isinstance(e, TraceEvent)]
     assert TraceKind.MODEL_REASONING_DELTA in kinds
     assert TraceKind.REASONING_LINE in kinds
+    usage_lines = [
+        e.payload.get("text", "")
+        for e in trace_events
+        if isinstance(e, TraceEvent) and e.kind == TraceKind.REASONING_LINE
+    ]
+    assert any(
+        "stop_reason=tool_use" in t
+        and "input_tokens=10" in t
+        and "latency_ms=99.0" in t
+        for t in usage_lines
+    )
 
     chunks = [r["data"] for r in rows if r["type"] == "chunk"]
     assert chunks == ["mock-token"]

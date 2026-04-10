@@ -40,6 +40,45 @@ def _validate_strands_settings() -> None:
         raise ValueError("BEDROCK_KNOWLEDGE_BASE_ID is required when AGENT_BACKEND=strands")
 
 
+def _try_extract_model_stop_payload(
+    event: Any,
+) -> tuple[Any, dict[str, Any], dict[str, Any]] | None:
+    """
+    Strands yields :class:`~strands.types._events.ModelStopReason` (``dict`` subclass)
+    with ``stop`` = ``(stop_reason, message, usage, metrics)`` after each model stream
+    completes — matching Bedrock's final ``metadata`` chunk.
+    """
+    if not isinstance(event, dict) or "stop" not in event:
+        return None
+    stop = event.get("stop")
+    if not isinstance(stop, tuple) or len(stop) < 4:
+        return None
+    stop_reason, _message, usage, metrics = stop[0], stop[1], stop[2], stop[3]
+    if not isinstance(usage, dict) or not isinstance(metrics, dict):
+        return None
+    return (stop_reason, usage, metrics)
+
+
+def _format_bedrock_usage_trace(
+    stop_reason: Any,
+    usage: dict[str, Any],
+    metrics: dict[str, Any],
+) -> str:
+    """One-line trace for AG-UI reasoning (Bedrock ConverseStream metadata)."""
+    sr = str(stop_reason) if stop_reason is not None else "unknown"
+    in_t = usage.get("inputTokens")
+    out_t = usage.get("outputTokens")
+    tot_t = usage.get("totalTokens")
+    parts = [
+        f"stop_reason={sr}",
+        f"usage: input_tokens={in_t}  output_tokens={out_t}  total_tokens={tot_t}",
+    ]
+    lat = metrics.get("latencyMs")
+    if lat is not None:
+        parts.append(f"metrics: latency_ms={lat}")
+    return " ".join(parts) + "\n"
+
+
 async def _anext_or_sentinel(aiter: AsyncIterator[Any]) -> Any:
     try:
         return await aiter.__anext__()
@@ -161,6 +200,28 @@ async def run_stream(
         if not isinstance(event, dict):
             non_dict_event_count += 1
             continue
+
+        stop_payload = _try_extract_model_stop_payload(event)
+        if stop_payload is not None:
+            stop_reason, usage, metrics = stop_payload
+            stream_trace_seq += 1
+            yield {
+                "type": "trace",
+                "data": TraceEvent(
+                    run_id=run_id or "",
+                    thread_id=session_id,
+                    agent_name=agent_name,
+                    step_id=stream_trace_seq,
+                    ts_ms=int(time.time() * 1000),
+                    kind=TraceKind.REASONING_LINE,
+                    payload={
+                        "text": _format_bedrock_usage_trace(
+                            stop_reason, usage, metrics
+                        ),
+                    },
+                ),
+            }
+
         rt = event.get("reasoningText")
         if isinstance(rt, str) and rt:
             stream_trace_seq += 1
