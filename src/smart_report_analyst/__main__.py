@@ -11,7 +11,6 @@ def main():
     
     Usage:
         python -m smart_report_analyst              # CLI mode
-        python -m smart_report_analyst --streamlit  # Streamlit UI mode
     """
 
     logging.basicConfig(
@@ -28,17 +27,7 @@ def main():
         logging.getLogger(_name).setLevel(logging.WARNING)
 
     parser = argparse.ArgumentParser(description="Smart Report Analyst")
-    parser.add_argument(
-        "--streamlit",
-        action="store_true",
-        help="Run Streamlit UI",
-    )
 
-    parser.add_argument(
-        "--chainlit",
-        action="store_true",
-        help="Run Chainlit UI",
-    )
 
     parser.add_argument(
         "--copilot",
@@ -63,11 +52,7 @@ def main():
 
     app = SmartReportAnalystApp()
 
-    if args.streamlit:
-        app.run_streamlit()
-    elif args.chainlit:
-        app.run_chainlit()
-    elif args.copilot:
+    if args.copilot:
         app.run_copilot(host=args.host, port=args.port)
     else:
         asyncio.run(app.run_cli())

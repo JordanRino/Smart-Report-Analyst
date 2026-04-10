@@ -5,20 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 
-def chainlit_history_to_strands_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Map Chainlit/Streamlit style {role, content} entries to Strands Messages."""
-    out: list[dict[str, Any]] = []
-    for item in history:
-        role = item.get("role")
-        if role not in ("user", "assistant"):
-            continue
-        content = item.get("content", "")
-        if not isinstance(content, str):
-            content = str(content)
-        out.append({"role": role, "content": [{"text": content}]})
-    return out
-
-
 def split_history_for_turn(history: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str]:
     """
     Split so the last user message is the current turn prompt; remainder is prior context.

@@ -55,36 +55,6 @@ class SmartReportAnalystApp:
                 print(f"\nAn error occurred: {e}\n")
                 print("Please try again or type 'exit' to quit.\n")
 
-
-    def run_streamlit(self):
-        """Start the Streamlit UI application via CLI."""
-        
-        logger.info("Starting Smart Report Analyst Streamlit UI")
-
-        # Get absolute path to manager.py
-        streamlit_file = Path(__file__).parent / "service/streamlit/manager.py"
-
-        # Run Streamlit properly
-        subprocess.run([
-            "streamlit",
-            "run",
-            str(streamlit_file)
-        ])
-
-    def run_chainlit(self):
-        """Start the Chainlit UI application via CLI."""
-
-        logger.info("Starting Smart Report Analyst Chainlit UI")
-
-        chainlit_file = Path(__file__).parent / "ui/chainlit/manager.py"
-
-        subprocess.run([
-            "chainlit",
-            "run",
-            str(chainlit_file),
-            "-w"  # auto-reload (super useful for dev)
-        ])
-
     def run_copilot(self, host: str | None = None, port: int | None = None):
 
         import uvicorn

@@ -143,8 +143,6 @@ Supporting: **`service/bedrock/`** (model + KB clients), **`service/persistence/
 
 ## Repository layout (Strands / Copilot path)
 
-High-signal folders only. The package also contains **Chainlit** and **Streamlit** UIs under `ui/` and `service/streamlit/`; they are separate entry points from the Next.js + CopilotKit app.
-
 ### Backend — `src/smart_report_analyst/`
 
 ```text
@@ -166,8 +164,7 @@ src/smart_report_analyst/
     │   ├── session/            # File-backed sessions (thread ↔ storage)
     │   └── conversation/       # Conversation manager wiring
     ├── bedrock/                # Model + knowledge base clients
-    ├── persistence/mysql/      # App SQL execution, Chainlit store, etc.
-    ├── report_generation/      # PDF build + HTTP request models
+    ├── persistence/mysql/      # App SQL execution.    ├── report_generation/      # PDF build + HTTP request models
     └── feedback/               # Positive feedback + snapshot index for thumbs-up
 ```
 

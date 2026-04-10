@@ -58,7 +58,3 @@ EC2_IP="<REPLACE_WITH_PRIVATE_OR_REACHABLE_IP>"
 # Open in browser (HTTP, not HTTPS, unless you terminate TLS in front):
 #   http://${EC2_IP}:3000
 
-# =============================================================================
-# Optional: Chainlit (different app entrypoint)
-# =============================================================================
-# chainlit run src/smart_report_analyst/ui/chainlit/manager.py --host 0.0.0.0 --port 8000

@@ -62,7 +62,7 @@ async def copilotkit_runtime_info(request: Request):
 @router.post("/feedback/positive", tags=["feedback"])
 async def feedback_positive(body: FeedbackPositiveBody) -> dict[str, Any]:
     """
-    Persist helpful feedback (same rules as Chainlit ``report_helpful``).
+    Persist helpful feedback.
 
     - CopilotKit thumbs-up: body ``{ message_id, thread_id }`` (snapshot from last ``execute_sql`` emit).
     - Explicit save: ``{ refined_user_question, executed_sql, to_store? }`` (e.g. SqlPdfReport Helpful).

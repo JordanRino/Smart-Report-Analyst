@@ -100,7 +100,7 @@ async def run_stream(
     agent_name: str = "loan_analyst_agent",
 ) -> AsyncIterator[dict[str, Any]]:
     """
-    Async-iterate stream events compatible with CopilotKit / Chainlit.
+    Async-iterate stream events compatible with CopilotKit
 
     Yields ``chunk``, ``trace`` (optional), and a final ``tool_result``.
     """
@@ -207,7 +207,7 @@ def run_sync(
     user_message: str,
     session_id: str,
 ) -> dict[str, Any]:
-    """Non-streaming turn for Streamlit / CLI."""
+    """Non-streaming turn for CLI."""
 
     _validate_strands_settings()
     logger.info(
