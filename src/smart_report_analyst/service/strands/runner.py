@@ -212,9 +212,9 @@ async def run_stream(
             yield {
                 "type": "chunk",
                 "data": (
-                    "Before I can coordinate your session, choose a **data specialist** "
-                    "in the bar above (**WLR Reporting** or **Loan analyst**). "
-                    "That tells me which analyst runs SQL and the knowledge base for this thread."
+                    "Before I can coordinate your session, choose a **main agent** "
+                    "in the bar (**WLR Reporting** or **Loan analyst**). "
+                    "That selects which analyst runs SQL and the knowledge base for this thread."
                 ),
             }
             yield {"type": "tool_result", "data": {}}
