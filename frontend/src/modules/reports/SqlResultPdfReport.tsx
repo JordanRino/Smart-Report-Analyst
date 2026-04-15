@@ -320,22 +320,29 @@ export function SqlResultPdfReport({
             >
               Download PDF
             </a>
-            <button
-              type="button"
-              disabled={savingReport}
-              className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-60"
-              onClick={() => void handleSaveReport()}
-            >
-              <Save size={14} aria-hidden />
-              {savingReport ? "Saving…" : "Save report"}
-            </button>
+            {saveReportMessage?.startsWith("Saved") ? (
+              <button
+                type="button"
+                disabled
+                className="inline-flex items-center gap-1 rounded-md border border-green-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-800"
+              >
+                <Save size={14} aria-hidden />
+                Saved!
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={savingReport}
+                className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-60"
+                onClick={() => void handleSaveReport()}
+              >
+                <Save size={14} aria-hidden />
+                {savingReport ? "Saving…" : "Save report"}
+              </button>
+            )}
           </div>
-          {saveReportMessage ? (
-            <p
-              className={`text-xs ${saveReportMessage.startsWith("Saved") ? "text-green-700" : "text-red-700"}`}
-            >
-              {saveReportMessage}
-            </p>
+          {saveReportMessage && !saveReportMessage.startsWith("Saved") ? (
+            <p className="text-xs text-red-700">{saveReportMessage}</p>
           ) : null}
         </div>
       </div>
