@@ -81,7 +81,6 @@ CREATE TABLE IF NOT EXISTS saved_reports (
 
 CREATE INDEX IF NOT EXISTS idx_saved_reports_created ON saved_reports(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_saved_reports_thread ON saved_reports(thread_id);
-CREATE INDEX IF NOT EXISTS idx_saved_reports_kind ON saved_reports(kind);
 """
 
 
@@ -105,6 +104,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE saved_reports ADD COLUMN kind TEXT NOT NULL DEFAULT 'report'"
         )
+    # Index on kind — created here (after column exists) so it is safe for migrated DBs.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_saved_reports_kind ON saved_reports(kind)"
+    )
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
