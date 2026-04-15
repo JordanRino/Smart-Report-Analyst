@@ -32,6 +32,12 @@ export interface ReportsListResponse {
   total: number;
 }
 
+export interface SpecialistState {
+  threadId: string;
+  /** null when no specialist has been persisted yet for this thread. */
+  mainAgentId: string | null;
+}
+
 export const api = {
   /**
    * Fetches the list of saved sessions from the backend.
@@ -64,5 +70,33 @@ export const api = {
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
+  },
+
+  /**
+   * Persist the active specialist agent for a thread.
+   * Pass null to clear the selection (reverts to "no specialist" state).
+   */
+  async setSpecialist(threadId: string, mainAgentId: string | null): Promise<SpecialistState> {
+    const response = await fetch(`${API_BASE_URL}/session/${encodeURIComponent(threadId)}/specialist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mainAgentId }),
+    });
+    if (!response.ok) {
+      throw new Error(`setSpecialist HTTP error: ${response.status}`);
+    }
+    return (await response.json()) as SpecialistState;
+  },
+
+  /**
+   * Fetch the persisted specialist agent for a thread.
+   * Returns { mainAgentId: null } when no specialist has been set yet.
+   */
+  async getSpecialist(threadId: string): Promise<SpecialistState> {
+    const response = await fetch(`${API_BASE_URL}/session/${encodeURIComponent(threadId)}/specialist`);
+    if (!response.ok) {
+      throw new Error(`getSpecialist HTTP error: ${response.status}`);
+    }
+    return (await response.json()) as SpecialistState;
   },
 };

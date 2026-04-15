@@ -2,6 +2,7 @@
 
 import { useApp } from "@/providers/AppContext";
 import { MAIN_SPECIALIST_OPTIONS, type AgentId } from "@/lib/agents";
+import { api } from "@/lib/api";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 /**
@@ -9,7 +10,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
  * (``mainAgentId``). Single compact custom menu.
  */
 export function AgentPicker() {
-  const { orchestratorMainAgentId, setOrchestratorMainAgentId } = useApp();
+  const { orchestratorMainAgentId, setOrchestratorMainAgentId, effectiveThreadId } = useApp();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
@@ -32,8 +33,14 @@ export function AgentPicker() {
     (id: AgentId) => {
       setOrchestratorMainAgentId(id);
       setOpen(false);
+      // Persist to backend — fire-and-forget. React state drives the UI immediately;
+      // the API call ensures the backend knows the specialist for this thread.
+      void api.setSpecialist(effectiveThreadId, id).catch(() => {
+        // Non-fatal: the backend will fall back to the "choose a specialist" prompt
+        // if state is missing, which is the correct degradation path.
+      });
     },
-    [setOrchestratorMainAgentId],
+    [setOrchestratorMainAgentId, effectiveThreadId],
   );
 
   return (
@@ -86,7 +93,10 @@ export function AgentPicker() {
           <button
             type="button"
             className="shrink-0 rounded-md px-1.5 py-1 text-[10px] font-medium tracking-wide text-neutral-500 transition hover:bg-white/5 hover:text-[#c9a227]"
-            onClick={() => setOrchestratorMainAgentId(null)}
+            onClick={() => {
+              setOrchestratorMainAgentId(null);
+              void api.setSpecialist(effectiveThreadId, null).catch(() => {});
+            }}
             title="Clear main agent"
           >
             Reset

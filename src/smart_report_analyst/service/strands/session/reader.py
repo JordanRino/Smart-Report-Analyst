@@ -12,6 +12,7 @@ from smart_report_analyst.service.strands.session.manager import (
     _resolved_storage_dir,
     build_strands_session_manager,
 )
+from smart_report_analyst.service.strands.session.orchestrator_state import get_main_agent_id
 from smart_report_analyst.service.strands.session.scoped import composite_session_id
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,21 @@ def load_ordered_session_messages(session_id: str, agent_id: str) -> list[Sessio
     return sm.list_messages(session_id, agent_id)
 
 
+_AGENT_ORCHESTRATOR = "sra_orchestrator_agent"
+
+
+def _orchestrator_state_dict(thread_id: str, agent_name: str | None) -> dict[str, Any]:
+    """Return the ``state`` dict to embed in a get_state response.
+
+    For the orchestrator agent we include ``mainAgentId`` so the frontend can
+    hydrate the specialist picker when loading a past thread.
+    """
+    if agent_name != _AGENT_ORCHESTRATOR:
+        return {}
+    mid = get_main_agent_id(thread_id)
+    return {"mainAgentId": mid} if mid else {}
+
+
 def get_copilot_state_for_thread(
     thread_id: str,
     *,
@@ -147,6 +163,9 @@ def get_copilot_state_for_thread(
     ``composite_session_id(thread_id, agent_name)`` (per-agent history).
 
     When omitted, uses legacy layout ``session_<threadId>`` only (pre–multi-agent).
+
+    For the orchestrator agent the ``state`` key includes ``mainAgentId`` from the
+    persisted orchestrator state so the frontend can re-hydrate the specialist picker.
     """
     if not thread_id.strip():
         return {
@@ -157,6 +176,7 @@ def get_copilot_state_for_thread(
         }
 
     root = _resolved_storage_dir()
+    agent_state = _orchestrator_state_dict(thread_id, agent_name)
 
     if agent_name:
         strands_sid = composite_session_id(thread_id, agent_name)
@@ -165,7 +185,7 @@ def get_copilot_state_for_thread(
             return {
                 "threadId": thread_id,
                 "threadExists": False,
-                "state": {},
+                "state": agent_state,
                 "messages": [],
             }
         try:
@@ -179,14 +199,14 @@ def get_copilot_state_for_thread(
             return {
                 "threadId": thread_id,
                 "threadExists": True,
-                "state": {},
+                "state": agent_state,
                 "messages": [],
             }
         messages = session_messages_to_copilot_messages(session_messages)
         return {
             "threadId": thread_id,
             "threadExists": True,
-            "state": {},
+            "state": agent_state,
             "messages": messages,
         }
 
@@ -195,7 +215,7 @@ def get_copilot_state_for_thread(
         return {
             "threadId": thread_id,
             "threadExists": False,
-            "state": {},
+            "state": agent_state,
             "messages": [],
         }
 
@@ -204,7 +224,7 @@ def get_copilot_state_for_thread(
         return {
             "threadId": thread_id,
             "threadExists": True,
-            "state": {},
+            "state": agent_state,
             "messages": [],
         }
 
@@ -215,7 +235,7 @@ def get_copilot_state_for_thread(
         return {
             "threadId": thread_id,
             "threadExists": True,
-            "state": {},
+            "state": agent_state,
             "messages": [],
         }
 
@@ -223,6 +243,6 @@ def get_copilot_state_for_thread(
     return {
         "threadId": thread_id,
         "threadExists": True,
-        "state": {},
+        "state": agent_state,
         "messages": messages,
     }

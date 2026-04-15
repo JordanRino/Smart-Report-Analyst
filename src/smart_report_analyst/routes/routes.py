@@ -26,6 +26,11 @@ from smart_report_analyst.service.reports.report_pdf import (
     render_sql_report_pdf,
 )
 from smart_report_analyst.service.strands.agent import StrandsCopilotAgent
+from smart_report_analyst.service.strands.agents.registry import is_main_specialist
+from smart_report_analyst.service.strands.session.orchestrator_state import (
+    get_main_agent_id,
+    set_main_agent_id,
+)
 from smart_report_analyst.service.strands.session.reader import list_history_sessions
 
 patch_copilotkit_info_html_for_agent_map()
@@ -282,6 +287,46 @@ async def copilotkit_agent_stop(agent_name: str, thread_id_param: str):
     """Prevent ``agent/name/stop/...`` from being handled as ``execute_agent``."""
     _ = agent_name, thread_id_param
     return JSONResponse(content={"ok": True})
+
+
+@router.post("/session/{thread_id}/specialist")
+async def set_session_specialist(thread_id: str, request: Request) -> JSONResponse:
+    """Persist the orchestrator's active specialist for a thread.
+
+    Body: ``{ "mainAgentId": "wlr_reporting_agent" }``
+    Passing ``null`` or omitting the key clears the choice.
+    """
+    try:
+        body = await request.json()
+    except Exception:  # pylint: disable=broad-except
+        raise HTTPException(status_code=400, detail="Request body must be valid JSON.")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object.")
+
+    raw_mid = body.get("mainAgentId")
+    if raw_mid is not None and not isinstance(raw_mid, str):
+        raise HTTPException(status_code=422, detail="mainAgentId must be a string or null.")
+
+    mid: str | None = raw_mid.strip() if isinstance(raw_mid, str) and raw_mid.strip() else None
+    if mid is not None and not is_main_specialist(mid):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown specialist agent id: {mid!r}. "
+            "Must be one of: wlr_reporting_agent, loan_report_analyst_agent.",
+        )
+
+    set_main_agent_id(thread_id.strip(), mid)
+    return JSONResponse(content={"threadId": thread_id, "mainAgentId": mid})
+
+
+@router.get("/session/{thread_id}/specialist")
+async def get_session_specialist(thread_id: str) -> JSONResponse:
+    """Return the currently persisted specialist for a thread.
+
+    Response: ``{ "threadId": "...", "mainAgentId": "wlr_reporting_agent" | null }``
+    """
+    mid = get_main_agent_id(thread_id.strip())
+    return JSONResponse(content={"threadId": thread_id, "mainAgentId": mid})
 
 
 add_fastapi_endpoint(router, _copilot_sdk, prefix="/copilotkit")

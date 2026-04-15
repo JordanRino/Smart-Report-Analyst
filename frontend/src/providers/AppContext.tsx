@@ -1,6 +1,7 @@
 "use client";
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
-import { AGENT_ORCHESTRATOR_ID, DEFAULT_AGENT_ID, type AgentId } from "@/lib/agents";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { AGENT_ORCHESTRATOR_ID, type AgentId } from "@/lib/agents";
+import { api } from "@/lib/api";
 
 function newThreadId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -37,6 +38,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [draftThreadId, setDraftThreadId] = useState<string>(newThreadId);
   const [pickedAgentId, setPickedAgentId] = useState<AgentId>(AGENT_ORCHESTRATOR_ID);
   const [orchestratorMainAgentId, setOrchestratorMainAgentId] = useState<AgentId | null>(null);
+
+  // When loading a past thread from history, hydrate orchestratorMainAgentId from the
+  // backend persisted state so the specialist picker reflects the saved choice.
+  useEffect(() => {
+    if (!activeThreadId) return;
+    let cancelled = false;
+    api
+      .getSpecialist(activeThreadId)
+      .then(({ mainAgentId }) => {
+        if (cancelled) return;
+        const id = mainAgentId as AgentId | null;
+        // Hydrate only if the backend has a stored choice; otherwise keep whatever
+        // HistorySidebar set as a reasonable default for existing sessions.
+        if (id) {
+          setOrchestratorMainAgentId(id);
+        }
+      })
+      .catch(() => {
+        // Non-fatal: HistorySidebar already set a safe fallback specialist.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeThreadId]);
 
   const startNewConversation = useCallback(() => {
     setActiveThreadId(null);

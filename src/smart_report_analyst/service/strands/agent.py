@@ -40,6 +40,7 @@ from smart_report_analyst.service.feedback.snapshot_index import (
 )
 from smart_report_analyst.service.strands.agents.registry import AGENT_ORCHESTRATOR
 from smart_report_analyst.service.strands.runner import run_stream
+from smart_report_analyst.service.strands.session.orchestrator_state import get_main_agent_id
 from smart_report_analyst.service.strands.user_turn import parse_user_turn_from_messages
 from smart_report_analyst.service.strands.session.reader import (
     get_copilot_state_for_thread,
@@ -172,9 +173,19 @@ class StrandsCopilotAgent(Agent):
         ]
         payload = parse_user_turn_from_messages(raw_msgs)
         props = _properties_from_execute(config=config, kwargs=kwargs)
-        main_agent_id = props.get("mainAgentId")
-        mid = main_agent_id.strip() if isinstance(main_agent_id, str) else None
         run_id = str(uuid.uuid4())
+
+        # For the orchestrator: persisted state is the authoritative source for mainAgentId.
+        # Props-based value is kept as a fallback for the first message of a session where
+        # the frontend may have sent it before the state write completes (race-free in
+        # practice since setSpecialist fires on pick, before the first message).
+        if self.name == AGENT_ORCHESTRATOR:
+            mid = get_main_agent_id(thread_id) or (
+                props.get("mainAgentId", "").strip() or None
+            )
+        else:
+            raw_mid = props.get("mainAgentId")
+            mid = raw_mid.strip() if isinstance(raw_mid, str) and raw_mid.strip() else None
 
         if not payload.text.strip() and not payload.attachments:
             t = _ts_ms()
