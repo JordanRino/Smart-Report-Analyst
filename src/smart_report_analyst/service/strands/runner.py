@@ -191,6 +191,7 @@ async def run_stream(
     trace_queue: asyncio.Queue = asyncio.Queue()
     turn_state.trace_queue = trace_queue
     turn_state.trace_run_id = run_id or ""
+    turn_state.thread_id = session_id  # used by generate_report_pdf tool
     strands_session_id = composite_session_id(session_id, agent_name)
     # Trace + observability: keep logical Copilot thread id (matches feedback / client).
     turn_state.trace_thread_id = session_id
@@ -319,6 +320,7 @@ async def run_stream(
         )
 
     yield {"type": "tool_result", "data": turn_state.last_tool_result or {}}
+    yield {"type": "turn_state", "data": turn_state}
 
 
 def run_sync(

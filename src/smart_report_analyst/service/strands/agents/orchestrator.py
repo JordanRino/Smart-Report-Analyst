@@ -25,7 +25,11 @@ from smart_report_analyst.service.strands.session import (
 )
 from smart_report_analyst.service.strands.session.scoped import composite_session_id
 from smart_report_analyst.service.strands.conversation import build_strands_conversation_manager
-from smart_report_analyst.service.strands.tools import StrandsTurnState, build_strands_tools
+from smart_report_analyst.service.strands.tools import (
+    StrandsTurnState,
+    build_strands_tools,
+    build_report_builder_tools,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -156,10 +160,12 @@ def create_orchestrator_agent(
         preserve_context=True,
     )
 
+    report_tools = build_report_builder_tools(turn_state)
+
     model = build_bedrock_model()
     orch_kwargs: dict[str, Any] = {
         "model": model,
-        "tools": [main_tool, builder_tool],
+        "tools": [main_tool, builder_tool] + report_tools,
         "system_prompt": ORCHESTRATOR_INSTRUCTIONS.strip(),
         "callback_handler": None,
         "name": AGENT_ORCHESTRATOR,

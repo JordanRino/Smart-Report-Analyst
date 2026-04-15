@@ -25,6 +25,8 @@ export interface ReportSummary {
   source_message_id: string | null;
   /** Orchestrator mode: persisted ``properties.mainAgentId`` when saved. */
   main_agent_id?: string | null;
+  /** "record" (CSV) or "report" (narrative PDF). */
+  kind?: "record" | "report";
 }
 
 export interface ReportsListResponse {
@@ -55,8 +57,11 @@ export const api = {
     }
   },
 
-  async listReports(): Promise<ReportsListResponse> {
-    const response = await fetch(`${API_BASE_URL}/reports/saved`);
+  async listReports(kind?: "record" | "report"): Promise<ReportsListResponse> {
+    const url = kind
+      ? `${API_BASE_URL}/reports/saved?kind=${encodeURIComponent(kind)}`
+      : `${API_BASE_URL}/reports/saved`;
+    const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }

@@ -2,8 +2,8 @@
 
 import { useApp } from "@/providers/AppContext";
 import { getApiPrefix } from "@/lib/env";
-import { Save } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Download, Save, Table2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 type Props = {
@@ -14,7 +14,7 @@ type Props = {
   rowCount?: number;
 };
 
-/** Cheap fingerprint so we do not depend on ``results`` reference identity in the effect. */
+/** Stable fingerprint to avoid duplicate saves across re-renders. */
 function resultsFingerprint(rows: unknown[]): string {
   if (rows.length === 0) return "0";
   try {
@@ -26,14 +26,32 @@ function resultsFingerprint(rows: unknown[]): string {
   }
 }
 
-function isPdfType(blob: Blob): Promise<boolean> {
-  return blob.slice(0, 4).arrayBuffer().then((buf) => {
-    const b = new Uint8Array(buf);
-    return b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46;
-  });
+function rowsToCsv(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return "";
+  const keys = Object.keys(rows[0]);
+  const escape = (v: unknown) => {
+    const s = v == null ? "" : String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n")
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
+  };
+  const header = keys.map(escape).join(",");
+  const body = rows.map((r) => keys.map((k) => escape(r[k])).join(",")).join("\n");
+  return `${header}\n${body}`;
 }
 
-/** CopilotKit ``execute_sql`` completion: PDF from API + save to reports library. */
+function downloadCsv(rows: Record<string, unknown>[], filename: string) {
+  const csv = rowsToCsv(rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** CopilotKit ``execute_sql`` action renderer: shows SQL results as a Records card. */
 export function SqlResultPdfReport({
   status,
   query,
@@ -42,116 +60,34 @@ export function SqlResultPdfReport({
   rowCount,
 }: Props) {
   const { effectiveThreadId, pickedAgentId, orchestratorMainAgentId } = useApp();
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [savingReport, setSavingReport] = useState(false);
-  const [saveReportMessage, setSaveReportMessage] = useState<string | null>(null);
-  /** Set only after a successful blob → object URL (avoids Strict Mode / dedupe deadlock). */
-  const succeededKeyRef = useRef<string | null>(null);
 
-  const rows = Array.isArray(results) ? results : [];
-  const resultsFingerprintValue = resultsFingerprint(rows);
-  const fetchKey = useMemo(
-    () =>
-      `${query}\0${resultsFingerprintValue}\0${refinedUserQuestion ?? ""}\0${rowCount ?? ""}`,
-    [query, resultsFingerprintValue, refinedUserQuestion, rowCount],
+  const rows = useMemo(
+    () => (Array.isArray(results) ? (results as Record<string, unknown>[]) : []),
+    [results],
+  );
+  const columns = useMemo(
+    () => (rows.length > 0 ? Object.keys(rows[0]) : []),
+    [rows],
   );
 
+  const fingerprint = resultsFingerprint(rows);
+  const saveKey = useMemo(
+    () => `${query}\0${fingerprint}\0${refinedUserQuestion ?? ""}`,
+    [query, fingerprint, refinedUserQuestion],
+  );
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedMeta, setSavedMeta] = useState<{ id: string } | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const savedKeyRef = useRef<string | null>(null);
+
+  // Reset save state when the result changes.
   useEffect(() => {
-    if (status !== "complete") {
-      succeededKeyRef.current = null;
-      return;
-    }
-    if (!query.trim() && rows.length === 0) {
-      return;
-    }
-    if (succeededKeyRef.current === fetchKey) {
-      return;
-    }
-
-    const ac = new AbortController();
-    setLoading(true);
-    setError(null);
-    setPdfUrl(null);
-
-    const body = {
-      executed_sql: query,
-      results: rows,
-      refined_user_question: refinedUserQuestion || undefined,
-      row_count: rowCount,
-    };
-
-    void (async () => {
-      try {
-        const res = await fetch(`${getApiPrefix()}/reports/pdf`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          signal: ac.signal,
-        });
-        const ct = res.headers.get("content-type") || "";
-        if (!res.ok) {
-          let msg = `Request failed (${res.status})`;
-          if (ct.includes("application/json")) {
-            try {
-              const j = (await res.json()) as { detail?: string | unknown[] };
-              const d = j.detail;
-              if (typeof d === "string") msg = d;
-              else if (Array.isArray(d) && d.length > 0) {
-                const first = d[0] as { msg?: string };
-                if (typeof first?.msg === "string") msg = first.msg;
-              }
-            } catch {
-              /* ignore */
-            }
-          }
-          if (!ac.signal.aborted) setError(msg);
-          return;
-        }
-        const blob = await res.blob();
-        if (ac.signal.aborted) return;
-        const pdfOk =
-          ct.includes("application/pdf") || (await isPdfType(blob));
-        if (!pdfOk) {
-          if (!ac.signal.aborted) setError("Server did not return a PDF");
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        if (ac.signal.aborted) {
-          URL.revokeObjectURL(url);
-          return;
-        }
-        succeededKeyRef.current = fetchKey;
-        setPdfUrl(url);
-      } catch (e) {
-        if (ac.signal.aborted) return;
-        setError(e instanceof Error ? e.message : "Network error");
-      } finally {
-        if (!ac.signal.aborted) setLoading(false);
-      }
-    })();
-
-    return () => {
-      ac.abort();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable via fetchKey
-  }, [status, fetchKey]);
-
-  useEffect(() => {
-    return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-    };
-  }, [pdfUrl]);
-
-  useEffect(() => {
-    setPreviewOpen(false);
-  }, [pdfUrl]);
-
-  useEffect(() => {
-    setSaveReportMessage(null);
-  }, [fetchKey]);
+    setSavedMeta(null);
+    setSaveError(null);
+    savedKeyRef.current = null;
+  }, [saveKey]);
 
   useEffect(() => {
     if (!previewOpen) return;
@@ -159,58 +95,25 @@ export function SqlResultPdfReport({
       if (e.key === "Escape") setPreviewOpen(false);
     };
     window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
+    const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
+      document.body.style.overflow = prev;
     };
   }, [previewOpen]);
 
-  if (status === "inProgress") {
-    return (
-      <div className="my-4 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-        Running SQL…
-      </div>
-    );
-  }
-
-  if (status !== "complete") {
-    return null;
-  }
-
-  if (loading) {
-    return (
-      <div className="my-4 rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">
-        Building PDF report…
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="my-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-        {error}
-      </div>
-    );
-  }
-
-  if (!pdfUrl) {
-    return null;
-  }
-
-  const fileSlug = (refinedUserQuestion || "sba-report").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 48) || "report";
-
-  async function handleSaveReport() {
-    setSavingReport(true);
-    setSaveReportMessage(null);
+  const handleSave = useCallback(async () => {
+    if (saving || savedMeta || savedKeyRef.current === saveKey) return;
+    setSaving(true);
+    setSaveError(null);
     try {
-      const res = await fetch(`${getApiPrefix()}/reports/saved`, {
+      const res = await fetch(`${getApiPrefix()}/records/saved`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          executed_sql: query,
           results: rows,
+          executed_sql: query,
           refined_user_question: refinedUserQuestion || undefined,
           row_count: rowCount,
           thread_id: effectiveThreadId,
@@ -221,31 +124,35 @@ export function SqlResultPdfReport({
         }),
       });
       if (!res.ok) {
-        let msg = `Save failed (${res.status})`;
-        const ct = res.headers.get("content-type") || "";
-        if (ct.includes("application/json")) {
-          try {
-            const j = (await res.json()) as { detail?: string | unknown[] };
-            const d = j.detail;
-            if (typeof d === "string") msg = d;
-            else if (Array.isArray(d) && d.length > 0) {
-              const first = d[0] as { msg?: string };
-              if (typeof first?.msg === "string") msg = first.msg;
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-        setSaveReportMessage(msg);
+        const j = await res.json().catch(() => ({})) as { detail?: string };
+        setSaveError(typeof j.detail === "string" ? j.detail : `Save failed (${res.status})`);
         return;
       }
-      setSaveReportMessage("Saved to Reports.");
+      const data = await res.json() as { id: string };
+      savedKeyRef.current = saveKey;
+      setSavedMeta(data);
     } catch (e) {
-      setSaveReportMessage(e instanceof Error ? e.message : "Network error");
+      setSaveError(e instanceof Error ? e.message : "Network error");
     } finally {
-      setSavingReport(false);
+      setSaving(false);
     }
+  }, [saving, savedMeta, saveKey, rows, query, refinedUserQuestion, rowCount,
+      effectiveThreadId, pickedAgentId, orchestratorMainAgentId]);
+
+  const fileSlug = (refinedUserQuestion || "records")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .slice(0, 48) || "records";
+
+  if (status === "inProgress") {
+    return (
+      <div className="my-4 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+        Running SQL…
+      </div>
+    );
   }
+  if (status !== "complete") return null;
+
+  const preview = rows.slice(0, 100);
 
   const overlay =
     previewOpen &&
@@ -255,7 +162,7 @@ export function SqlResultPdfReport({
         className="fixed inset-0 z-200 flex items-center justify-center p-4"
         role="dialog"
         aria-modal="true"
-        aria-label="PDF preview"
+        aria-label="Records preview"
       >
         <button
           type="button"
@@ -265,15 +172,17 @@ export function SqlResultPdfReport({
         />
         <div className="relative z-10 flex h-[min(88vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-100 bg-zinc-50 px-4 py-3">
-            <span className="text-sm font-medium text-zinc-800">Report preview</span>
-            <div className="flex flex-wrap items-center gap-2">
-              <a
-                href={pdfUrl}
-                download={`${fileSlug}.pdf`}
-                className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-100"
+            <span className="text-sm font-medium text-zinc-800">
+              Records preview{rows.length > 100 ? ` (first 100 of ${rows.length})` : ""}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-100"
+                onClick={() => downloadCsv(rows, `${fileSlug}.csv`)}
               >
-                Download
-              </a>
+                <Download size={13} aria-hidden /> Download CSV
+              </button>
               <button
                 type="button"
                 className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800"
@@ -283,17 +192,36 @@ export function SqlResultPdfReport({
               </button>
             </div>
           </div>
-          <div className="min-h-0 flex-1 bg-zinc-100">
-            <object
-              data={pdfUrl}
-              type="application/pdf"
-              className="h-full w-full min-h-[400px]"
-              title="Report preview"
-            >
-              <p className="p-4 text-sm text-zinc-600">
-                Preview not available in this browser. Use Download.
-              </p>
-            </object>
+          <div className="min-h-0 flex-1 overflow-auto bg-white">
+            {columns.length > 0 ? (
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-zinc-100">
+                  <tr>
+                    {columns.map((col) => (
+                      <th
+                        key={col}
+                        className="border-b border-zinc-200 px-3 py-2 text-left font-semibold text-zinc-700"
+                      >
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.map((row, i) => (
+                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-zinc-50"}>
+                      {columns.map((col) => (
+                        <td key={col} className="border-b border-zinc-100 px-3 py-1.5 text-zinc-800">
+                          {String(row[col] ?? "")}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="p-6 text-sm text-zinc-500">No data returned.</p>
+            )}
           </div>
         </div>
       </div>,
@@ -305,46 +233,89 @@ export function SqlResultPdfReport({
       <div className="my-4 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-col gap-2 border-b border-zinc-100 bg-zinc-50 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-zinc-800">Analysis report</span>
+            <span className="text-sm font-medium text-zinc-800">
+              Records
+              {rows.length > 0 && (
+                <span className="ml-1.5 text-xs font-normal text-zinc-500">
+                  {rows.length} row{rows.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </span>
             <button
               type="button"
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-100"
+              className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-100"
               onClick={() => setPreviewOpen(true)}
             >
-              Preview
+              <Table2 size={13} aria-hidden /> Preview
             </button>
-            <a
-              href={pdfUrl}
-              download={`${fileSlug}.pdf`}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              onClick={() => downloadCsv(rows, `${fileSlug}.csv`)}
             >
-              Download PDF
-            </a>
-            {saveReportMessage?.startsWith("Saved") ? (
+              <Download size={13} aria-hidden /> Download CSV
+            </button>
+            {savedMeta ? (
               <button
                 type="button"
                 disabled
                 className="inline-flex items-center gap-1 rounded-md border border-green-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-800"
               >
-                <Save size={14} aria-hidden />
-                Saved!
+                <Save size={13} aria-hidden /> Saved!
               </button>
             ) : (
               <button
                 type="button"
-                disabled={savingReport}
+                disabled={saving || rows.length === 0}
                 className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-60"
-                onClick={() => void handleSaveReport()}
+                onClick={() => void handleSave()}
               >
-                <Save size={14} aria-hidden />
-                {savingReport ? "Saving…" : "Save report"}
+                <Save size={13} aria-hidden /> {saving ? "Saving…" : "Save"}
               </button>
             )}
           </div>
-          {saveReportMessage && !saveReportMessage.startsWith("Saved") ? (
-            <p className="text-xs text-red-700">{saveReportMessage}</p>
-          ) : null}
+          {saveError && (
+            <p className="text-xs text-red-700">{saveError}</p>
+          )}
         </div>
+        {/* Inline mini-table (first 5 rows) */}
+        {columns.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-zinc-50">
+                  {columns.map((col) => (
+                    <th
+                      key={col}
+                      className="border-b border-zinc-200 px-3 py-2 text-left font-semibold text-zinc-600"
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, 5).map((row, i) => (
+                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-zinc-50"}>
+                    {columns.map((col) => (
+                      <td
+                        key={col}
+                        className="border-b border-zinc-100 px-3 py-1.5 text-zinc-800"
+                      >
+                        {String(row[col] ?? "")}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {rows.length > 5 && (
+              <p className="border-t border-zinc-100 px-3 py-2 text-[11px] text-zinc-400">
+                {rows.length - 5} more row{rows.length - 5 !== 1 ? "s" : ""} — use Preview or Download CSV to see all.
+              </p>
+            )}
+          </div>
+        )}
       </div>
       {overlay}
     </>

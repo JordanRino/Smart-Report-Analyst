@@ -110,6 +110,40 @@ def _yield_execute_sql_tool_events(
     )
 
 
+def _yield_deliver_report_tool_events(
+    *,
+    report_result: dict[str, Any],
+    parent_message_id: str,
+) -> Iterator[str]:
+    """AG-UI tool-call SSE frames for the deliver_report action (narrative PDF card)."""
+    temp_id = report_result.get("temp_id")
+    if not temp_id:
+        return
+    tool_call_id = str(uuid.uuid4())
+    result_message_id = str(uuid.uuid4())
+    args_obj = {
+        "temp_id": temp_id,
+        "title": report_result.get("title", ""),
+        "markdown_content": report_result.get("markdown_content", ""),
+    }
+    args_json = json.dumps(args_obj, default=str)
+    t = _ts_ms()
+    yield agui_tool_call_start(
+        tool_call_id=tool_call_id,
+        tool_call_name="deliver_report",
+        parent_message_id=parent_message_id,
+        timestamp=t,
+    )
+    yield agui_tool_call_args(tool_call_id=tool_call_id, delta=args_json, timestamp=t)
+    yield agui_tool_call_end(tool_call_id=tool_call_id, timestamp=t)
+    yield agui_tool_call_result(
+        message_id=result_message_id,
+        tool_call_id=tool_call_id,
+        content=args_json,
+        timestamp=t,
+    )
+
+
 def _properties_from_execute(*, config: dict | None, kwargs: dict[str, Any]) -> dict[str, Any]:
     """Resolve Copilot ``properties`` (top-level request body + optional config)."""
     props: dict[str, Any] = {}
@@ -208,6 +242,7 @@ class StrandsCopilotAgent(Agent):
             yield frame
 
         final_tool_result: dict[str, Any] = {}
+        run_state = None  # StrandsTurnState captured from the final turn_state event
         first_text_chunk = False
         reasoning_shell_open = True
 
@@ -265,6 +300,8 @@ class StrandsCopilotAgent(Agent):
                 elif et == "tool_result":
                     raw = event.get("data")
                     final_tool_result = raw if isinstance(raw, dict) else {}
+                elif et == "turn_state":
+                    run_state = event.get("data")
         except Exception:
             logger.exception("strands_copilotkit_agent_execute")
             raise
@@ -290,6 +327,15 @@ class StrandsCopilotAgent(Agent):
             for frame in _yield_execute_sql_tool_events(
                 thread_id=thread_id,
                 final_tool_result=final_tool_result,
+                parent_message_id=message_id,
+            ):
+                yield frame
+
+        # Emit deliver_report action if the orchestrator called generate_report_pdf.
+        report_result = run_state.last_report_result if run_state else {}
+        if report_result and report_result.get("temp_id"):
+            for frame in _yield_deliver_report_tool_events(
+                report_result=report_result,
                 parent_message_id=message_id,
             ):
                 yield frame
