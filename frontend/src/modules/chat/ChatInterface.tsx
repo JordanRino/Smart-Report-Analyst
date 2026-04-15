@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { useApp } from "@/context/AppContext";
+import { useApp } from "@/providers/AppContext";
 import {
   AssistantMessage,
   CopilotChat,
@@ -11,11 +11,11 @@ import {
 } from "@copilotkit/react-ui";
 import { ActionRenderProps, useCopilotAction } from "@copilotkit/react-core";
 import type { ReasoningMessage } from "@copilotkit/shared";
-import { SqlPdfReport } from "@/components/SqlPdfReport";
+import { SqlResultPdfReport } from "@/modules/reports/SqlResultPdfReport";
 import { ReasoningTraceMessage } from "@/components/agent-trace/ReasoningTraceMessage";
-import { AgentPicker } from "@/components/AgentPicker";
+import { AgentPicker } from "./AgentPicker";
 import { getApiPrefix } from "@/lib/env";
-import { getAgentLabel } from "@/lib/agents";
+import { getAgentLabel, MAIN_SPECIALIST_OPTIONS } from "@/lib/agents";
 
 /**
  * Match ``@copilotkit/react-ui`` default ``RenderMessage`` routing so user/assistant
@@ -90,7 +90,7 @@ function AgentRenderMessage(props: RenderMessageProps) {
 }
 
 export function ChatInterface() {
-  const { effectiveThreadId, pickedAgentId } = useApp();
+  const { effectiveThreadId, pickedAgentId, orchestratorMainAgentId } = useApp();
 
   /** CopilotKit message thumbs-up → server snapshot (agent.py) → MySQL successful_queries. */
   const onFeedbackGiven = useCallback(
@@ -116,15 +116,19 @@ export function ChatInterface() {
   );
 
   const copilotLabels = useMemo(() => {
-    const base =
-      pickedAgentId === "sra_router_agent"
-        ? "Welcome to Smart Report Analyst. Pick an agent above (e.g. **WLR Reporting Agent**) for SBA loan SQL and reports, or ask how to get started."
-        : `You are chatting with **${getAgentLabel(pickedAgentId)}**. Ask for analysis, reports, or SQL-backed answers. Use the × on the agent chip to switch agents.`;
+    const specialistHint =
+      orchestratorMainAgentId == null
+        ? null
+        : (MAIN_SPECIALIST_OPTIONS.find((o) => o.id === orchestratorMainAgentId)?.shortLabel ??
+          getAgentLabel(orchestratorMainAgentId));
+    const base = specialistHint
+      ? `You are in **Session** mode. SQL and the knowledge base run through **${specialistHint}** (change in the bar). The session can also use **report_builder** for narrative deliverables once facts are settled.`
+      : `Choose a **main agent** in the bar before asking for database or SQL work.`;
     return {
       title: "Smart Report Analyst",
       initial: base,
     };
-  }, [pickedAgentId]);
+  }, [orchestratorMainAgentId]);
 
   useCopilotAction({
     name: "execute_sql",
@@ -171,7 +175,7 @@ export function ChatInterface() {
           ? args.row_count
           : undefined;
       return (
-        <SqlPdfReport
+        <SqlResultPdfReport
           status={status}
           query={typeof args.query === "string" ? args.query : ""}
           results={results}

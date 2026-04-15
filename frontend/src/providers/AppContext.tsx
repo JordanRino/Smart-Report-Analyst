@@ -1,6 +1,6 @@
 "use client";
 import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
-import { FRESH_CHAT_AGENT_ID, type AgentId } from "@/lib/agents";
+import { AGENT_ORCHESTRATOR_ID, DEFAULT_AGENT_ID, type AgentId } from "@/lib/agents";
 
 function newThreadId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -18,6 +18,13 @@ interface AppContextType {
   /** Sticky CopilotKit agent (isolated Strands state per agent + thread). */
   pickedAgentId: AgentId;
   setPickedAgentId: (id: AgentId) => void;
+  /**
+   * When ``pickedAgentId`` is the orchestrator: Copilot ``properties.mainAgentId``.
+   * ``null`` until the user picks a data specialist (required before tools run).
+   */
+  orchestratorMainAgentId: AgentId | null;
+  setOrchestratorMainAgentId: (id: AgentId | null) => void;
+  /** Return to session orchestrator and clear the data specialist choice. */
   clearPickedAgent: () => void;
   /** Clear sidebar selection and start a new CopilotKit / Strands thread (new draft session id). */
   startNewConversation: () => void;
@@ -28,16 +35,19 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [draftThreadId, setDraftThreadId] = useState<string>(newThreadId);
-  const [pickedAgentId, setPickedAgentId] = useState<AgentId>(FRESH_CHAT_AGENT_ID);
+  const [pickedAgentId, setPickedAgentId] = useState<AgentId>(AGENT_ORCHESTRATOR_ID);
+  const [orchestratorMainAgentId, setOrchestratorMainAgentId] = useState<AgentId | null>(null);
 
   const startNewConversation = useCallback(() => {
     setActiveThreadId(null);
     setDraftThreadId(newThreadId());
-    setPickedAgentId(FRESH_CHAT_AGENT_ID);
+    setPickedAgentId(AGENT_ORCHESTRATOR_ID);
+    setOrchestratorMainAgentId(null);
   }, []);
 
   const clearPickedAgent = useCallback(() => {
-    setPickedAgentId("sra_router_agent");
+    setPickedAgentId(AGENT_ORCHESTRATOR_ID);
+    setOrchestratorMainAgentId(null);
   }, []);
 
   const effectiveThreadId = activeThreadId ?? draftThreadId;
@@ -49,6 +59,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       effectiveThreadId,
       pickedAgentId,
       setPickedAgentId,
+      orchestratorMainAgentId,
+      setOrchestratorMainAgentId,
       clearPickedAgent,
       startNewConversation,
     }),
@@ -56,6 +68,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       activeThreadId,
       effectiveThreadId,
       pickedAgentId,
+      orchestratorMainAgentId,
       clearPickedAgent,
       startNewConversation,
     ],

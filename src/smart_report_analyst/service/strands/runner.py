@@ -9,7 +9,13 @@ from typing import Any, AsyncIterator
 
 from smart_report_analyst.service.agent_trace.events import TraceEvent, TraceKind
 from smart_report_analyst.service.strands.agents import create_strands_agent
+from smart_report_analyst.service.strands.agents.orchestrator import create_orchestrator_agent
 from smart_report_analyst.service.strands.agents.prompts import ROUTER_INSTRUCTIONS
+from smart_report_analyst.service.strands.agents.registry import (
+    AGENT_ORCHESTRATOR,
+    is_main_specialist,
+)
+from smart_report_analyst.service.strands.user_turn import UserTurnPayload, user_turn_to_strands_prompt
 from smart_report_analyst.service.strands.tools import StrandsTurnState
 from smart_report_analyst.service.strands.session import build_strands_session_manager
 from smart_report_analyst.service.strands.session.scoped import composite_session_id
@@ -131,11 +137,12 @@ async def _merge_stream_with_trace_queue(
 
 
 async def run_stream(
-    user_message: str,
+    user_message: str | UserTurnPayload,
     session_id: str,
     *,
     run_id: str = "",
     agent_name: str = "loan_analyst_agent",
+    main_agent_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """
     Async-iterate stream events compatible with CopilotKit
@@ -143,18 +150,34 @@ async def run_stream(
     Yields ``chunk``, ``trace`` (optional), and a final ``tool_result``.
     """
     _validate_strands_settings()
+    if isinstance(user_message, UserTurnPayload):
+        payload = user_message
+        prompt_for_agent = user_turn_to_strands_prompt(payload)
+        classify_input = payload.classify_text()
+        log_chars = len(payload.text) + sum(len(a.bytes_content or b"") for a in payload.attachments)
+    else:
+        payload = UserTurnPayload(text=user_message)
+        prompt_for_agent = user_message
+        classify_input = user_message
+        log_chars = len(user_message)
+
     logger.info(
         "strands_stream_turn",
         extra={
-            "user_chars": len(user_message),
+            "user_chars": log_chars,
+            "has_attachments": bool(isinstance(user_message, UserTurnPayload) and user_message.attachments),
         },
     )
-    if not user_message.strip():
+
+    if not (
+        (isinstance(payload.text, str) and payload.text.strip())
+        or (isinstance(user_message, UserTurnPayload) and user_message.attachments)
+    ):
         yield {"type": "chunk", "data": "No user message to process."}
         yield {"type": "tool_result", "data": {}}
         return
 
-    topic = classify_user_message(user_message)
+    topic = classify_user_message(classify_input)
     if not topic.allowed:
         logger.info(
             "strands_topic_guardrail_block",
@@ -183,6 +206,33 @@ async def run_stream(
             system_prompt=ROUTER_INSTRUCTIONS.strip(),
             with_tools=False,
         )
+    elif agent_name == AGENT_ORCHESTRATOR:
+        mid = (main_agent_id or "").strip()
+        if not mid or not is_main_specialist(mid):
+            yield {
+                "type": "chunk",
+                "data": (
+                    "Before I can coordinate your session, choose a **data specialist** "
+                    "in the bar above (**WLR Reporting** or **Loan analyst**). "
+                    "That tells me which analyst runs SQL and the knowledge base for this thread."
+                ),
+            }
+            yield {"type": "tool_result", "data": {}}
+            return
+        agent = create_orchestrator_agent(
+            turn_state,
+            main_agent_id=mid,
+            copilot_thread_id=session_id,
+            orchestrator_session_manager=sm,
+            orchestrator_conversation_manager=cm,
+        )
+    elif agent_name in (AGENT_WLR_REPORTING, AGENT_LOAN_REPORT_ANALYST):
+        agent = create_strands_agent(
+            turn_state,
+            session_manager=sm,
+            conversation_manager=cm,
+            agent_id=agent_name,
+        )
     else:
         agent = create_strands_agent(
             turn_state,
@@ -197,7 +247,7 @@ async def run_stream(
     first_event_summary: str | None = None
     stream_trace_seq = 0
 
-    stream_agen = agent.stream_async(user_message)
+    stream_agen = agent.stream_async(prompt_for_agent)
     async for kind, payload in _merge_stream_with_trace_queue(stream_agen, trace_queue):
         if kind == "trace":
             yield {"type": "trace", "data": payload}

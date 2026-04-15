@@ -119,13 +119,14 @@ def test_run_stream_merged_trace_and_chunks_without_bedrock(
 @patch("smart_report_analyst.service.strands.agent.run_stream")
 def test_strands_copilot_agent_execute_uses_mock_run_stream(mock_run_stream: MagicMock) -> None:
     async def _fake_run_stream(
-        user_message: str,
+        user_message,
         session_id: str,
         *,
         run_id: str = "",
         agent_name: str = "",
+        main_agent_id: str | None = None,
     ):
-        _ = user_message, session_id
+        _ = user_message, session_id, main_agent_id
         yield {
             "type": "trace",
             "data": TraceEvent(
@@ -202,6 +203,7 @@ def test_strands_copilot_agent_execute_uses_mock_run_stream(mock_run_stream: Mag
 
     mock_run_stream.assert_called_once()
     call_kw = mock_run_stream.call_args
-    assert call_kw[0][0] == "hello"
+    u0 = call_kw[0][0]
+    assert getattr(u0, "text", u0) == "hello"
     assert call_kw[0][1] == "t1"
     assert call_kw[1]["agent_name"] == "test_agent"

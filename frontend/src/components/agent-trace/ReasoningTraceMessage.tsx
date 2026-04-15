@@ -39,7 +39,7 @@ function TraceLineRow({ line }: { line: string }) {
 export function ReasoningTraceMessage({ message, inProgress }: Props) {
   const [open, setOpen] = useState(false);
   const raw = message.content || "—";
-  const lines = raw === "—" ? ["—"] : raw.split("\n");
+  const lines: string[] = raw === "—" ? ["—"] : raw.split("\n");
 
   return (
     <details

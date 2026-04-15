@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
-import { AppProvider } from "@/context/AppContext";
+import { AppProvider } from "@/providers/AppContext";
+import { ThreadDeepLink } from "@/modules/chat/ThreadDeepLink";
 import { CopilotRuntimeProvider } from "@/providers/CopilotRuntimeProvider";
 import "@copilotkit/react-ui/styles.css"; // for the chat UI
 import "./globals.css";
@@ -18,7 +20,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="h-full bg-zinc-50">
         <AppProvider>
-          <CopilotRuntimeProvider>{children}</CopilotRuntimeProvider>
+          <CopilotRuntimeProvider>
+            <Suspense fallback={null}>
+              <ThreadDeepLink />
+            </Suspense>
+            {children}
+          </CopilotRuntimeProvider>
         </AppProvider>
       </body>
     </html>

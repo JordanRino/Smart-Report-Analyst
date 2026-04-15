@@ -84,7 +84,9 @@ These paths use the **same FastAPI app** but are **not** part of the AG-UI over 
 2. **FastAPI** — Feedback route resolves the stored SQL snapshot and persists a **successful query** record.
 3. **RDS MySQL** — **Successful queries** updated for future retrieval / analytics.
 
-**PDF report:** the UI POSTs query + results to a **report** route; **FastAPI** uses **`service/report_generation/`** to build PDF bytes.
+**PDF report:** the UI POSTs query + results to a **report** route; **FastAPI** uses **`service/reports/`** (ReportLab + `ReportPdfRequest`) to build PDF bytes.
+
+**Saved reports (dashboard):** the UI can POST to **`/api/reports/saved`** with the same PDF payload plus `thread_id` and `agent_id`. The backend persists a **SQLite** catalog at `reports/storage/catalog.sqlite` and stores each report under `reports/storage/files/<id>/` (`report.pdf` + `snapshot.json`). The Next.js **Reports** page lists them; **`/?thread=<uuid>`** deep-links back into chat.
 
 ```mermaid
 flowchart TB
@@ -95,19 +97,24 @@ flowchart TB
   subgraph F2["Layer 2 — FastAPI JSON routes"]
     RF[Feedback route]
     RP[Reports PDF route]
+    RSV[Reports saved route]
   end
 
   subgraph F3["Layer 3 — Service modules"]
-    FG[service/report_generation]
+    FG[service/reports]
   end
 
   subgraph F4["Layer 4 — Persistence"]
     RDS3[(RDS MySQL: successful queries)]
+    DISK[(Local reports/storage)]
   end
 
   FB -->|POST| RF
   FB -->|POST| RP
+  FB -->|POST| RSV
   RP --> FG
+  RSV --> FG
+  RSV --> DISK
   RF --> RDS3
 ```
 
@@ -122,7 +129,7 @@ Primary packages under `service/` for this product surface:
 | Module | Role |
 |--------|------|
 | **`service/strands/`** | Strands **orchestrator**: `agents/` (agent factory), `agent.py` (Copilot adapter), `runner.py`, `tools/` (KB + SQL), `session/`, `conversation/`, guardrails. |
-| **`service/report_generation/`** | PDF generation and request models used by the reports HTTP route. |
+| **`service/reports/`** | PDF generation (`manager.py`), HTTP request models (`report_pdf.py`), saved-report SQLite + disk store (`reports_store.py`, `reports_models.py`). |
 | **`service/feedback/`** | Positive feedback handling and snapshot index (message id → SQL) for thumbs-up persistence. |
 
 Supporting: **`service/bedrock/`** (model + KB clients), **`service/persistence/mysql/`** (app data layer, SQL execution), **`integrations/`** (AG-UI over **SSE (Server-Sent Events)** helpers, CopilotKit wiring).
@@ -150,7 +157,7 @@ src/smart_report_analyst/
 ├── app.py                      # FastAPI application
 ├── config/                     # Settings and environment
 ├── routes/
-│   └── routes.py               # CopilotKit runtime mount; reports PDF; history; feedback
+│   └── routes.py               # CopilotKit runtime mount; reports PDF + saved reports; history; feedback
 ├── integrations/
 │   ├── agui_stream.py          # AG-UI over SSE (Server-Sent Events) frame builders
 │   └── copilotkit.py           # CopilotKit remote endpoint + info HTML patch
@@ -164,7 +171,8 @@ src/smart_report_analyst/
     │   ├── session/            # File-backed sessions (thread ↔ storage)
     │   └── conversation/       # Conversation manager wiring
     ├── bedrock/                # Model + knowledge base clients
-    ├── persistence/mysql/      # App SQL execution.    ├── report_generation/      # PDF build + HTTP request models
+    ├── persistence/mysql/      # App SQL execution
+    ├── reports/                  # PDF build, saved reports library (SQLite + local files)
     └── feedback/               # Positive feedback + snapshot index for thumbs-up
 ```
 
@@ -172,19 +180,18 @@ src/smart_report_analyst/
 
 ```text
 frontend/src/
-├── app/                        # Next.js App Router (layout, home page)
+├── app/                        # Next.js App Router (thin routes → modules)
+├── modules/
+│   ├── chat/                   # Chat shell, Copilot UI, thread deep-link, sidebar
+│   └── reports/                # Saved reports dashboard + SqlResultPdfReport (execute_sql PDF card)
 ├── components/
-│   ├── ChatInterface.tsx       # CopilotChat, RenderMessage → ReasoningTraceMessage, execute_sql action
-│   ├── agent-trace/            # Collapsible Trace UI (ReasoningTraceMessage)
-│   ├── SqlPdfReport.tsx        # PDF fetch + preview overlay
-│   └── HistorySidebar.tsx      # Session list from /api/history
+│   └── agent-trace/            # Collapsible Trace UI (ReasoningTraceMessage)
 ├── providers/
+│   ├── AppContext.tsx          # Active thread id + agent selection for Copilot + sidebar
 │   └── CopilotRuntimeProvider.tsx   # CopilotKit provider + thread + public API key
-├── context/
-│   └── AppContext.tsx          # Active thread id for Copilot + sidebar
 └── lib/
     ├── env.ts                  # API base URL, Copilot runtime URL, public key
-    └── api.ts                  # Shared fetch helpers (if used)
+    └── api.ts                  # Shared fetch helpers (history, reports list)
 ```
 
 ---
@@ -218,4 +225,4 @@ During a turn, the server surfaces **live** tool/model trace in **one** open AG-
 - AG-UI framing: `src/smart_report_analyst/integrations/agui_stream.py`  
 - Runtime registration: `src/smart_report_analyst/routes/routes.py` (CopilotKit runtime, reports, history, feedback)  
 - CopilotKit bridge: `src/smart_report_analyst/integrations/copilotkit.py`  
-- Frontend shell: `frontend/src/providers/CopilotRuntimeProvider.tsx`, `frontend/src/components/ChatInterface.tsx`
+- Frontend shell: `frontend/src/providers/AppContext.tsx`, `frontend/src/providers/CopilotRuntimeProvider.tsx`, `frontend/src/modules/chat/ChatInterface.tsx`, `frontend/src/modules/reports/SqlResultPdfReport.tsx`

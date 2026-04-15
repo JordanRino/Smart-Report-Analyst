@@ -146,6 +146,11 @@ class Settings(BaseSettings):
         description="Base directory for Strands file sessions; defaults to package strands/session/storage/.",
         validation_alias="STRANDS_SESSION_STORAGE_DIR",
     )
+    REPORTS_STORAGE_DIR: Optional[str] = Field(
+        default=None,
+        description="Saved SQL reports dashboard: SQLite catalog + PDF/snapshot files; defaults to <repo>/reports/storage/.",
+        validation_alias="REPORTS_STORAGE_DIR",
+    )
     STRANDS_CONVERSATION_SUMMARY_RATIO: float = Field(
         default=0.3,
         ge=0.1,

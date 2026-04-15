@@ -1,8 +1,10 @@
 "use client";
 
+import { useApp } from "@/providers/AppContext";
+import { getApiPrefix } from "@/lib/env";
+import { Save } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { getApiPrefix } from "@/lib/env";
 
 type Props = {
   status: string;
@@ -31,18 +33,21 @@ function isPdfType(blob: Blob): Promise<boolean> {
   });
 }
 
-/** Renders CopilotKit ``execute_sql`` completion: fetches PDF from API, download + preview. */
-export function SqlPdfReport({
+/** CopilotKit ``execute_sql`` completion: PDF from API + save to reports library. */
+export function SqlResultPdfReport({
   status,
   query,
   results,
   refinedUserQuestion,
   rowCount,
 }: Props) {
+  const { effectiveThreadId, pickedAgentId, orchestratorMainAgentId } = useApp();
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [savingReport, setSavingReport] = useState(false);
+  const [saveReportMessage, setSaveReportMessage] = useState<string | null>(null);
   /** Set only after a successful blob → object URL (avoids Strict Mode / dedupe deadlock). */
   const succeededKeyRef = useRef<string | null>(null);
 
@@ -131,8 +136,6 @@ export function SqlPdfReport({
     return () => {
       ac.abort();
     };
-    // fetchKey already fingerprints query/results/refinedUserQuestion/rowCount; listing raw
-    // props would re-run on unstable ``results`` references without changing intent.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stable via fetchKey
   }, [status, fetchKey]);
 
@@ -145,6 +148,10 @@ export function SqlPdfReport({
   useEffect(() => {
     setPreviewOpen(false);
   }, [pdfUrl]);
+
+  useEffect(() => {
+    setSaveReportMessage(null);
+  }, [fetchKey]);
 
   useEffect(() => {
     if (!previewOpen) return;
@@ -193,6 +200,52 @@ export function SqlPdfReport({
   }
 
   const fileSlug = (refinedUserQuestion || "sba-report").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 48) || "report";
+
+  async function handleSaveReport() {
+    setSavingReport(true);
+    setSaveReportMessage(null);
+    try {
+      const res = await fetch(`${getApiPrefix()}/reports/saved`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          executed_sql: query,
+          results: rows,
+          refined_user_question: refinedUserQuestion || undefined,
+          row_count: rowCount,
+          thread_id: effectiveThreadId,
+          agent_id: pickedAgentId,
+          ...(pickedAgentId === "sra_orchestrator_agent" && orchestratorMainAgentId
+            ? { main_agent_id: orchestratorMainAgentId }
+            : {}),
+        }),
+      });
+      if (!res.ok) {
+        let msg = `Save failed (${res.status})`;
+        const ct = res.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+          try {
+            const j = (await res.json()) as { detail?: string | unknown[] };
+            const d = j.detail;
+            if (typeof d === "string") msg = d;
+            else if (Array.isArray(d) && d.length > 0) {
+              const first = d[0] as { msg?: string };
+              if (typeof first?.msg === "string") msg = first.msg;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        setSaveReportMessage(msg);
+        return;
+      }
+      setSaveReportMessage("Saved to Reports.");
+    } catch (e) {
+      setSaveReportMessage(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setSavingReport(false);
+    }
+  }
 
   const overlay =
     previewOpen &&
@@ -250,22 +303,40 @@ export function SqlPdfReport({
   return (
     <>
       <div className="my-4 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center gap-3 border-b border-zinc-100 bg-zinc-50 px-4 py-3">
-          <span className="text-sm font-medium text-zinc-800">Analysis report</span>
-          <button
-            type="button"
-            className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-100"
-            onClick={() => setPreviewOpen(true)}
-          >
-            Preview
-          </button>
-          <a
-            href={pdfUrl}
-            download={`${fileSlug}.pdf`}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-          >
-            Download PDF
-          </a>
+        <div className="flex flex-col gap-2 border-b border-zinc-100 bg-zinc-50 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-zinc-800">Analysis report</span>
+            <button
+              type="button"
+              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-100"
+              onClick={() => setPreviewOpen(true)}
+            >
+              Preview
+            </button>
+            <a
+              href={pdfUrl}
+              download={`${fileSlug}.pdf`}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+            >
+              Download PDF
+            </a>
+            <button
+              type="button"
+              disabled={savingReport}
+              className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-60"
+              onClick={() => void handleSaveReport()}
+            >
+              <Save size={14} aria-hidden />
+              {savingReport ? "Saving…" : "Save report"}
+            </button>
+          </div>
+          {saveReportMessage ? (
+            <p
+              className={`text-xs ${saveReportMessage.startsWith("Saved") ? "text-green-700" : "text-red-700"}`}
+            >
+              {saveReportMessage}
+            </p>
+          ) : null}
         </div>
       </div>
       {overlay}

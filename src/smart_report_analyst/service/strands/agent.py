@@ -6,7 +6,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, cast
 
 from copilotkit.action import ActionDict
 from copilotkit.agent import Agent
@@ -38,7 +38,9 @@ from smart_report_analyst.service.agent_trace.events import TraceEvent
 from smart_report_analyst.service.feedback.snapshot_index import (
     register_feedback_snapshot,
 )
+from smart_report_analyst.service.strands.agents.registry import AGENT_ORCHESTRATOR
 from smart_report_analyst.service.strands.runner import run_stream
+from smart_report_analyst.service.strands.user_turn import parse_user_turn_from_messages
 from smart_report_analyst.service.strands.session.reader import (
     get_copilot_state_for_thread,
 )
@@ -107,31 +109,20 @@ def _yield_execute_sql_tool_events(
     )
 
 
-def _message_role_str(msg: Message) -> str:
-    r = msg.get("role")
-    if r is None:
-        return ""
-    return r.value if hasattr(r, "value") else str(r)
-
-
-def _last_user_text(messages: list[Message]) -> str:
-    """Latest user text from CopilotKit message list (JSON uses string roles)."""
-    for msg in reversed(messages):
-        if _message_role_str(msg) != "user":
-            continue
-        content = msg.get("content", "")
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts: list[str] = []
-            for block in content:
-                if isinstance(block, dict) and "text" in block:
-                    parts.append(str(block["text"]))
-                elif isinstance(block, str):
-                    parts.append(block)
-            return "".join(parts)
-        return str(content)
-    return ""
+def _properties_from_execute(*, config: dict | None, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Resolve Copilot ``properties`` (top-level request body + optional config)."""
+    props: dict[str, Any] = {}
+    if isinstance(config, dict):
+        cfg_props = config.get("properties")
+        if isinstance(cfg_props, dict):
+            props.update(cfg_props)
+        mid = config.get("mainAgentId")
+        if isinstance(mid, str) and mid.strip():
+            props.setdefault("mainAgentId", mid.strip())
+    raw = kwargs.get("properties")
+    if isinstance(raw, dict):
+        props.update(raw)
+    return props
 
 
 class StrandsCopilotAgent(Agent):
@@ -173,12 +164,19 @@ class StrandsCopilotAgent(Agent):
         meta_events: Optional[list[MetaEvent]] = None,
         **kwargs: Any,
     ):
-        _ = state, config, actions, meta_events, kwargs
+        _ = state, actions, meta_events
 
-        user_message = _last_user_text(messages)
+        raw_msgs: list[dict[str, Any]] = [
+            dict(m) if not isinstance(m, dict) else cast(dict[str, Any], m)
+            for m in messages
+        ]
+        payload = parse_user_turn_from_messages(raw_msgs)
+        props = _properties_from_execute(config=config, kwargs=kwargs)
+        main_agent_id = props.get("mainAgentId")
+        mid = main_agent_id.strip() if isinstance(main_agent_id, str) else None
         run_id = str(uuid.uuid4())
 
-        if not user_message.strip():
+        if not payload.text.strip() and not payload.attachments:
             t = _ts_ms()
             yield agui_run_started(thread_id=thread_id, run_id=run_id, timestamp=t)
             yield agui_state_snapshot(snapshot={"tool_result": {}}, timestamp=t)
@@ -217,10 +215,11 @@ class StrandsCopilotAgent(Agent):
 
         try:
             async for event in run_stream(
-                user_message,
+                payload,
                 thread_id,
                 run_id=run_id,
                 agent_name=self.name,
+                main_agent_id=mid,
             ):
                 et = event.get("type")
                 if et == "trace":
@@ -270,12 +269,19 @@ class StrandsCopilotAgent(Agent):
             yield frame
         yield agui_text_message_end(message_id=message_id, timestamp=t_end)
 
-        for frame in _yield_execute_sql_tool_events(
-            thread_id=thread_id,
-            final_tool_result=final_tool_result,
-            parent_message_id=message_id,
-        ):
-            yield frame
+        sql_emit_agent_names = {
+            "wlr_reporting_agent",
+            "loan_report_analyst_agent",
+            "loan_analyst_agent",
+            AGENT_ORCHESTRATOR,
+        }
+        if self.name in sql_emit_agent_names:
+            for frame in _yield_execute_sql_tool_events(
+                thread_id=thread_id,
+                final_tool_result=final_tool_result,
+                parent_message_id=message_id,
+            ):
+                yield frame
 
         t3 = _ts_ms()
         yield agui_state_snapshot(

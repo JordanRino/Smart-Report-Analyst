@@ -21,6 +21,7 @@ client_secret.json
 
 # Generated files (reports, uploads, etc.)
 .files/
+reports/storage/
 
 # Frontend (Node.js / Next.js)
 frontend/node_modules/

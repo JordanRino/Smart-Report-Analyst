@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from smart_report_analyst.service.report_generation.manager import generate_pdf
+from smart_report_analyst.service.reports.manager import generate_pdf
 
 # Guardrails for request size / memory (Copilot passes result rows in JSON).
 MAX_RESULT_ROWS = 10_000

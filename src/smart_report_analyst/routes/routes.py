@@ -7,8 +7,8 @@ from copilotkit.integrations.fastapi import (
     handle_info,
 )
 from copilotkit.sdk import CopilotKitContext
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from smart_report_analyst.integrations.agui_stream import iter_connect_replay_frames
 from smart_report_analyst.integrations.copilotkit import (
     CopilotKitRemoteEndpointAguiAgentsMap,
@@ -17,7 +17,9 @@ from smart_report_analyst.integrations.copilotkit import (
 from smart_report_analyst.service.feedback import handle_positive_feedback
 from smart_report_analyst.service.feedback.schemas import FeedbackPositiveBody
 from smart_report_analyst.service.feedback.snapshot_index import pop_feedback_snapshot
-from smart_report_analyst.service.report_generation.report_pdf import (
+from smart_report_analyst.service.reports.reports_models import ReportSaveRequest
+from smart_report_analyst.service.reports.reports_store import ReportsStore
+from smart_report_analyst.service.reports.report_pdf import (
     ReportPdfClientError,
     ReportPdfRequest,
     ReportPdfServerError,
@@ -29,6 +31,10 @@ from smart_report_analyst.service.strands.session.reader import list_history_ses
 patch_copilotkit_info_html_for_agent_map()
 
 router = APIRouter()
+
+
+def get_reports_store() -> ReportsStore:
+    return ReportsStore()
 
 
 _copilot_sdk = CopilotKitRemoteEndpointAguiAgentsMap(
@@ -44,6 +50,13 @@ _copilot_sdk = CopilotKitRemoteEndpointAguiAgentsMap(
         StrandsCopilotAgent(
             name="loan_report_analyst_agent",
             description="(Legacy) Same capability as WLR Reporting Agent — SBA loan SQL and reports.",
+        ),
+        StrandsCopilotAgent(
+            name="sra_orchestrator_agent",
+            description=(
+                "Session orchestrator: routes to your selected main specialist (see properties.mainAgentId) "
+                "plus a text-only report builder."
+            ),
         ),
     ],
 )
@@ -73,7 +86,7 @@ async def feedback_positive(body: FeedbackPositiveBody) -> dict[str, Any]:
     Persist helpful feedback.
 
     - CopilotKit thumbs-up: body ``{ message_id, thread_id }`` (snapshot from last ``execute_sql`` emit).
-    - Explicit save: ``{ refined_user_question, executed_sql, to_store? }`` (e.g. SqlPdfReport Helpful).
+    - Explicit save: ``{ refined_user_question, executed_sql, to_store? }`` (e.g. report card Helpful).
     """
     if body.message_id and body.thread_id:
         snap = pop_feedback_snapshot(body.thread_id.strip(), body.message_id.strip())
@@ -105,6 +118,96 @@ async def create_report_pdf(body: ReportPdfRequest):
         media_type="application/pdf",
         headers={"Content-Disposition": content_disposition},
     )
+
+
+@router.post("/reports/saved", status_code=201, tags=["reports"])
+async def create_saved_report(
+    body: ReportSaveRequest,
+    store: ReportsStore = Depends(get_reports_store),
+) -> JSONResponse:
+    try:
+        payload = store.save_report(
+            body=body,
+            thread_id=body.thread_id,
+            agent_id=body.agent_id,
+            title=body.title,
+            source_message_id=body.source_message_id,
+            main_agent_id=body.main_agent_id,
+        )
+    except ReportPdfClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ReportPdfServerError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return JSONResponse(status_code=201, content=payload)
+
+
+@router.get("/reports/saved", tags=["reports"])
+async def list_saved_reports(
+    limit: int = 50,
+    offset: int = 0,
+    thread_id: str | None = None,
+    agent_id: str | None = None,
+    store: ReportsStore = Depends(get_reports_store),
+) -> dict[str, Any]:
+    items, total = store.list_reports(
+        limit=limit,
+        offset=offset,
+        thread_id=thread_id,
+        agent_id=agent_id,
+    )
+    return {"items": items, "total": total}
+
+
+@router.get("/reports/saved/{report_id}", tags=["reports"])
+async def get_saved_report_metadata(
+    report_id: str,
+    store: ReportsStore = Depends(get_reports_store),
+) -> dict[str, Any]:
+    try:
+        meta = store.get_metadata(report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if meta is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return meta
+
+
+@router.get("/reports/saved/{report_id}/file", tags=["reports"])
+async def get_saved_report_file(
+    report_id: str,
+    store: ReportsStore = Depends(get_reports_store),
+) -> FileResponse:
+    try:
+        path = store.get_pdf_path(report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if path is None:
+        try:
+            exists_meta = store.get_metadata(report_id) is not None
+        except ValueError:
+            exists_meta = False
+        if not exists_meta:
+            raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail="PDF missing on disk")
+    return FileResponse(
+        path=str(path),
+        media_type="application/pdf",
+        filename="report.pdf",
+    )
+
+
+@router.delete("/reports/saved/{report_id}", status_code=204, tags=["reports"])
+async def delete_saved_report(
+    report_id: str,
+    store: ReportsStore = Depends(get_reports_store),
+) -> Response:
+    try:
+        deleted = store.delete_report(report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(status_code=204)
 
 
 @router.get("/history")
