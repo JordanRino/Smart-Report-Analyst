@@ -25,7 +25,6 @@ from smart_report_analyst.service.reports.report_pdf import (
     ReportPdfServerError,
     render_sql_report_pdf,
 )
-from smart_report_analyst.service.reports.temp_store import temp_report_store
 from smart_report_analyst.service.strands.agent import StrandsCopilotAgent
 from smart_report_analyst.service.strands.agents.registry import is_main_specialist
 from smart_report_analyst.service.strands.session.orchestrator_state import (
@@ -192,63 +191,6 @@ async def create_saved_report(
     return JSONResponse(status_code=status, content=payload)
 
 
-@router.post("/reports/temp/save", tags=["reports"])
-async def save_temp_report(
-    request: Request,
-    store: ReportsStore = Depends(get_reports_store),
-) -> JSONResponse:
-    """Permanently save a narrative report that was delivered via deliver_report action.
-
-    Body: ``{ "temp_id": "...", "thread_id": "...", "agent_id": "..." }``
-    """
-    try:
-        body = await request.json()
-    except Exception:  # pylint: disable=broad-except
-        raise HTTPException(status_code=400, detail="Invalid JSON body.")
-
-    temp_id = (body.get("temp_id") or "").strip()
-    thread_id = (body.get("thread_id") or "").strip()
-    agent_id = (body.get("agent_id") or "").strip()
-    main_agent_id = (body.get("main_agent_id") or "").strip() or None
-
-    if not temp_id:
-        raise HTTPException(status_code=400, detail="temp_id is required.")
-    if not thread_id:
-        raise HTTPException(status_code=400, detail="thread_id is required.")
-    if not agent_id:
-        raise HTTPException(status_code=400, detail="agent_id is required.")
-
-    entry = temp_report_store.pop(temp_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail="Temp report not found or expired.")
-
-    try:
-        payload = store.save_report_from_markdown(
-            pdf_bytes=entry.pdf_bytes,
-            markdown_content=entry.markdown_content,
-            title=entry.title,
-            thread_id=thread_id,
-            agent_id=agent_id,
-            main_agent_id=main_agent_id or entry.main_agent_id,
-        )
-    except ReportPdfClientError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    status = 200 if payload.get("already_exists") else 201
-    return JSONResponse(status_code=status, content=payload)
-
-
-@router.get("/reports/temp/{temp_id}", tags=["reports"])
-async def get_temp_report_pdf(temp_id: str) -> Response:
-    """Fetch the PDF bytes for a temp report (for in-chat preview/download)."""
-    pdf_bytes = temp_report_store.get_pdf(temp_id)
-    if pdf_bytes is None:
-        raise HTTPException(status_code=404, detail="Temp report not found or expired.")
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": 'inline; filename="report.pdf"'},
-    )
 
 
 @router.get("/reports/saved", tags=["reports"])

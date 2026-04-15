@@ -1,58 +1,53 @@
 "use client";
 
-import { useApp } from "@/providers/AppContext";
 import { getApiPrefix } from "@/lib/env";
-import { Download, Save, Eye } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Download, Eye } from "lucide-react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 type Props = {
   status: string;
-  temp_id: string;
+  report_id: string;
   title: string;
-  markdown_content?: string;
 };
 
-/** Renders a PDF report card delivered by the orchestrator's generate_report_pdf tool. */
-export function ReportBuilderCard({ status, temp_id, title }: Props) {
-  const { effectiveThreadId, pickedAgentId, orchestratorMainAgentId } = useApp();
-
+/**
+ * Renders a PDF report card delivered by the orchestrator's generate_report_pdf tool.
+ *
+ * The report is auto-saved permanently — no Save button needed. The card fetches
+ * the PDF from the permanent store (/api/reports/saved/{id}/file), so it survives
+ * navigation and history replay without any temp-store dependency.
+ */
+export function ReportBuilderCard({ status, report_id, title }: Props) {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savedMeta, setSavedMeta] = useState<{ id: string } | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const savedRef = useRef(false);
 
-  // Fetch the PDF from the temp store as soon as the action completes.
   useEffect(() => {
-    if (status !== "complete" || !temp_id) return;
+    if (status !== "complete" || !report_id) return;
     const ac = new AbortController();
     void (async () => {
       try {
-        const res = await fetch(`${getApiPrefix()}/reports/temp/${encodeURIComponent(temp_id)}`, {
-          signal: ac.signal,
-        });
+        const res = await fetch(
+          `${getApiPrefix()}/reports/saved/${encodeURIComponent(report_id)}/file`,
+          { signal: ac.signal },
+        );
         if (!res.ok) {
-          if (!ac.signal.aborted) setLoadError(`Could not load report (${res.status})`);
+          if (!ac.signal.aborted)
+            setLoadError(`Could not load report (${res.status})`);
           return;
         }
         const blob = await res.blob();
         if (ac.signal.aborted) return;
-        const url = URL.createObjectURL(blob);
-        setPdfUrl(url);
+        setPdfUrl(URL.createObjectURL(blob));
       } catch (e) {
         if (!ac.signal.aborted)
           setLoadError(e instanceof Error ? e.message : "Network error");
       }
     })();
-    return () => {
-      ac.abort();
-    };
-  }, [status, temp_id]);
+    return () => ac.abort();
+  }, [status, report_id]);
 
-  // Revoke object URL on unmount.
   useEffect(() => {
     return () => {
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -73,38 +68,6 @@ export function ReportBuilderCard({ status, temp_id, title }: Props) {
     };
   }, [previewOpen]);
 
-  const handleSave = useCallback(async () => {
-    if (saving || savedMeta || savedRef.current) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const res = await fetch(`${getApiPrefix()}/reports/temp/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          temp_id,
-          thread_id: effectiveThreadId,
-          agent_id: pickedAgentId,
-          ...(pickedAgentId === "sra_orchestrator_agent" && orchestratorMainAgentId
-            ? { main_agent_id: orchestratorMainAgentId }
-            : {}),
-        }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({})) as { detail?: string };
-        setSaveError(typeof j.detail === "string" ? j.detail : `Save failed (${res.status})`);
-        return;
-      }
-      const data = await res.json() as { id: string };
-      savedRef.current = true;
-      setSavedMeta(data);
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Network error");
-    } finally {
-      setSaving(false);
-    }
-  }, [saving, savedMeta, temp_id, effectiveThreadId, pickedAgentId, orchestratorMainAgentId]);
-
   if (status === "inProgress") {
     return (
       <div className="my-4 rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
@@ -114,7 +77,8 @@ export function ReportBuilderCard({ status, temp_id, title }: Props) {
   }
   if (status !== "complete") return null;
 
-  const fileSlug = title.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 48) || "report";
+  const fileSlug =
+    title.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 48) || "report";
 
   const overlay =
     previewOpen &&
@@ -135,7 +99,9 @@ export function ReportBuilderCard({ status, temp_id, title }: Props) {
         />
         <div className="relative z-10 flex h-[min(88vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-100 bg-zinc-50 px-4 py-3">
-            <span className="text-sm font-medium text-zinc-800">{title || "Report preview"}</span>
+            <span className="text-sm font-medium text-zinc-800">
+              {title || "Report preview"}
+            </span>
             <div className="flex gap-2">
               <a
                 href={pdfUrl}
@@ -178,8 +144,14 @@ export function ReportBuilderCard({ status, temp_id, title }: Props) {
             <span className="text-sm font-medium text-zinc-800">
               Report
               {title && (
-                <span className="ml-1.5 text-xs font-normal text-zinc-500">— {title}</span>
+                <span className="ml-1.5 text-xs font-normal text-zinc-500">
+                  — {title}
+                </span>
               )}
+            </span>
+            {/* Report is auto-saved — show a permanent saved badge */}
+            <span className="rounded border border-green-300 bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+              Saved to dashboard
             </span>
             {loadError ? (
               <span className="text-xs text-red-600">{loadError}</span>
@@ -204,28 +176,9 @@ export function ReportBuilderCard({ status, temp_id, title }: Props) {
                 ) : (
                   <span className="text-xs text-zinc-400">Loading PDF…</span>
                 )}
-                {savedMeta ? (
-                  <button
-                    type="button"
-                    disabled
-                    className="inline-flex items-center gap-1 rounded-md border border-green-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-800"
-                  >
-                    <Save size={13} aria-hidden /> Saved!
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={saving || !pdfUrl}
-                    className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-60"
-                    onClick={() => void handleSave()}
-                  >
-                    <Save size={13} aria-hidden /> {saving ? "Saving…" : "Save report"}
-                  </button>
-                )}
               </>
             )}
           </div>
-          {saveError && <p className="text-xs text-red-700">{saveError}</p>}
         </div>
       </div>
       {overlay}

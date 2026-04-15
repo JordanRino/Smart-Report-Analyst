@@ -11,6 +11,32 @@ import { Loader2, Trash2, ExternalLink, Eye, Download } from "lucide-react";
 
 type KindFilter = "all" | "record" | "report";
 
+function parseCsvToRows(csv: string): { columns: string[]; rows: string[][] } {
+  const lines = csv.trim().split("\n");
+  if (lines.length === 0) return { columns: [], rows: [] };
+  const splitLine = (line: string) => {
+    const result: string[] = [];
+    let cur = "";
+    let inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuote = !inQuote;
+      } else if (ch === "," && !inQuote) {
+        result.push(cur); cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    result.push(cur);
+    return result;
+  };
+  const columns = splitLine(lines[0]);
+  const rows = lines.slice(1).map(splitLine);
+  return { columns, rows };
+}
+
 function openChatHrefFromReport(row: ReportSummary): string {
   const qs = new URLSearchParams();
   qs.set("thread", row.thread_id);
@@ -44,6 +70,8 @@ export default function ReportsDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [recordPreviewId, setRecordPreviewId] = useState<string | null>(null);
+  const [recordPreviewData, setRecordPreviewData] = useState<{ columns: string[]; rows: string[][] } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(
@@ -108,6 +136,25 @@ export default function ReportsDashboard() {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
+
+  // Fetch and parse CSV for records preview
+  useEffect(() => {
+    if (!recordPreviewId) { setRecordPreviewData(null); return; }
+    const ac = new AbortController();
+    void (async () => {
+      try {
+        const res = await fetch(
+          `${getApiPrefix()}/records/saved/${encodeURIComponent(recordPreviewId)}/file`,
+          { signal: ac.signal },
+        );
+        if (!res.ok || ac.signal.aborted) return;
+        const text = await res.text();
+        if (ac.signal.aborted) return;
+        setRecordPreviewData(parseCsvToRows(text));
+      } catch { /* non-fatal */ }
+    })();
+    return () => ac.abort();
+  }, [recordPreviewId]);
 
   useEffect(() => {
     if (previewId === null) return;
@@ -176,6 +223,77 @@ export default function ReportsDashboard() {
               </object>
             ) : (
               <div className="flex h-64 items-center justify-center text-sm text-zinc-500">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading…
+              </div>
+            )}
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+
+  const recordOverlay =
+    recordPreviewId !== null &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        className="fixed inset-0 z-200 flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Records preview"
+      >
+        <button
+          type="button"
+          className="absolute inset-0 bg-zinc-950/70 backdrop-blur-[1px]"
+          aria-label="Close preview"
+          onClick={() => setRecordPreviewId(null)}
+        />
+        <div className="relative z-10 flex h-[min(88vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-100 bg-zinc-50 px-4 py-3">
+            <span className="text-sm font-medium text-zinc-800">Records preview</span>
+            <div className="flex gap-2">
+              <a
+                href={`${getApiPrefix()}/records/saved/${encodeURIComponent(recordPreviewId)}/file`}
+                download="records.csv"
+                className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-100"
+              >
+                Download CSV
+              </a>
+              <button
+                type="button"
+                className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800"
+                onClick={() => setRecordPreviewId(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto bg-white">
+            {recordPreviewData && recordPreviewData.columns.length > 0 ? (
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-zinc-100">
+                  <tr>
+                    {recordPreviewData.columns.map((col) => (
+                      <th key={col} className="border-b border-zinc-200 px-3 py-2 text-left font-semibold text-zinc-700">
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {recordPreviewData.rows.map((row, i) => (
+                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-zinc-50"}>
+                      {row.map((cell, j) => (
+                        <td key={j} className="border-b border-zinc-100 px-3 py-1.5 text-zinc-800">
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading…
               </div>
             )}
@@ -263,13 +381,22 @@ export default function ReportsDashboard() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {isRecord ? (
-                        <a
-                          href={`${getApiPrefix()}/records/saved/${encodeURIComponent(row.id)}/file`}
-                          download={`${row.title.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 48) || "records"}.csv`}
-                          className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                        >
-                          <Download size={13} /> Download CSV
-                        </a>
+                        <>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+                            onClick={() => setRecordPreviewId(row.id)}
+                          >
+                            <Eye size={14} /> Preview
+                          </button>
+                          <a
+                            href={`${getApiPrefix()}/records/saved/${encodeURIComponent(row.id)}/file`}
+                            download={`${row.title.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 48) || "records"}.csv`}
+                            className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                          >
+                            <Download size={13} /> Download CSV
+                          </a>
+                        </>
                       ) : (
                         <>
                           <button
@@ -311,6 +438,7 @@ export default function ReportsDashboard() {
         </div>
       </main>
       {overlay}
+      {recordOverlay}
     </div>
   );
 }

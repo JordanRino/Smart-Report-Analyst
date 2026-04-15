@@ -116,15 +116,14 @@ def _yield_deliver_report_tool_events(
     parent_message_id: str,
 ) -> Iterator[str]:
     """AG-UI tool-call SSE frames for the deliver_report action (narrative PDF card)."""
-    temp_id = report_result.get("temp_id")
-    if not temp_id:
+    report_id = report_result.get("report_id")
+    if not report_id:
         return
     tool_call_id = str(uuid.uuid4())
     result_message_id = str(uuid.uuid4())
     args_obj = {
-        "temp_id": temp_id,
+        "report_id": report_id,
         "title": report_result.get("title", ""),
-        "markdown_content": report_result.get("markdown_content", ""),
     }
     args_json = json.dumps(args_obj, default=str)
     t = _ts_ms()

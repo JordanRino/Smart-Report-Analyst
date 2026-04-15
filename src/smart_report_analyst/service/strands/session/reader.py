@@ -85,6 +85,27 @@ def list_history_sessions() -> list[dict[str, str]]:
     return [h[0] for h in history]
 
 
+_GENERATE_REPORT_PDF_TOOL = "generate_report_pdf"
+
+
+def _extract_report_id_from_tool_result(text: str) -> str | None:
+    """Parse ``report_id=<uuid>`` from the tool's return string."""
+    import re
+    m = re.search(r"report_id=([0-9a-f-]{36})", text)
+    return m.group(1) if m else None
+
+
+def _extract_report_title_from_tool_use(content_blocks: list[Any]) -> str:
+    """Find the title argument from the generate_report_pdf toolUse block."""
+    for block in content_blocks:
+        if not isinstance(block, dict):
+            continue
+        tu = block.get("toolUse")
+        if isinstance(tu, dict) and tu.get("name") == _GENERATE_REPORT_PDF_TOOL:
+            return str(tu.get("input", {}).get("title", "Report"))
+    return "Report"
+
+
 def _flatten_strands_message_for_replay(msg: dict[str, Any]) -> str:
     """Turn Strands Message content blocks into a single string for CopilotKit TextMessage."""
     parts: list[str] = []
@@ -97,7 +118,9 @@ def _flatten_strands_message_for_replay(msg: dict[str, Any]) -> str:
             tu = block["toolUse"]
             if isinstance(tu, dict):
                 name = tu.get("name", "tool")
-                parts.append(f"\n[{name}]\n")
+                # generate_report_pdf is surfaced as deliver_report action — skip inline text
+                if name != _GENERATE_REPORT_PDF_TOOL:
+                    parts.append(f"\n[{name}]\n")
             else:
                 parts.append("\n[tool]\n")
         elif block.get("toolResult"):
@@ -105,28 +128,119 @@ def _flatten_strands_message_for_replay(msg: dict[str, Any]) -> str:
     return "".join(parts).strip()
 
 
+def _build_deliver_report_action_message(
+    report_id: str,
+    title: str,
+    base_id: str,
+    created_at: str,
+) -> dict[str, Any]:
+    """Build a CopilotKit ActionExecutionMessage for deliver_report replay."""
+    import json as _json
+    return {
+        "type": "ActionExecutionMessage",
+        "id": f"{base_id}-deliver-report",
+        "createdAt": created_at,
+        "role": "assistant",
+        "name": "deliver_report",
+        "arguments": _json.dumps({"report_id": report_id, "title": title}),
+        "status": "complete",
+    }
+
+
 def session_messages_to_copilot_messages(
     session_messages: list[SessionMessage],
 ) -> list[dict[str, Any]]:
-    """Map persisted SessionMessage list to CopilotKit-style replay messages."""
+    """Map persisted SessionMessage list to CopilotKit-style replay messages.
+
+    For orchestrator sessions: when a ``generate_report_pdf`` tool use is found
+    in an assistant message, we scan the following user message for the tool
+    result that carries ``report_id=<uuid>``. If found, an ``ActionExecutionMessage``
+    for ``deliver_report`` is appended after the assistant message so the
+    ``ReportBuilderCard`` re-renders in the correct position on history replay.
+    """
+    # Index assistant messages that called generate_report_pdf:
+    # map toolUseId → (title, assistant_sm_index)
+    pending_report_tool_ids: dict[str, tuple[str, int]] = {}
+
     out: list[dict[str, Any]] = []
-    for sm in session_messages:
+    for idx, sm in enumerate(session_messages):
         raw = sm.to_message()
         if not isinstance(raw, dict):
             continue
         role = raw.get("role")
         if role not in ("user", "assistant"):
             continue
-        content = _flatten_strands_message_for_replay(raw)
-        out.append(
-            {
-                "type": "TextMessage",
-                "id": f"strands-msg-{sm.message_id}",
-                "createdAt": sm.created_at,
-                "role": role,
-                "content": content,
-            }
-        )
+
+        content_blocks = raw.get("content") or []
+        msg_id = f"strands-msg-{sm.message_id}"
+
+        if role == "assistant":
+            # Detect generate_report_pdf toolUse blocks and record them
+            for block in content_blocks:
+                if not isinstance(block, dict):
+                    continue
+                tu = block.get("toolUse")
+                if isinstance(tu, dict) and tu.get("name") == _GENERATE_REPORT_PDF_TOOL:
+                    tool_use_id = tu.get("toolUseId", "")
+                    title = str(tu.get("input", {}).get("title", "Report"))
+                    if tool_use_id:
+                        pending_report_tool_ids[tool_use_id] = (title, len(out))
+
+            content = _flatten_strands_message_for_replay(raw)
+            out.append(
+                {
+                    "type": "TextMessage",
+                    "id": msg_id,
+                    "createdAt": sm.created_at,
+                    "role": role,
+                    "content": content,
+                }
+            )
+
+        elif role == "user":
+            # Check if any toolResult blocks resolve a pending generate_report_pdf
+            deliver_report_msgs: list[dict[str, Any]] = []
+            for block in content_blocks:
+                if not isinstance(block, dict):
+                    continue
+                tr = block.get("toolResult")
+                if not isinstance(tr, dict):
+                    continue
+                tool_use_id = tr.get("toolUseId", "")
+                if tool_use_id not in pending_report_tool_ids:
+                    continue
+                # Extract report_id from tool result content text
+                tr_content = tr.get("content") or []
+                result_text = ""
+                for rc in tr_content:
+                    if isinstance(rc, dict) and rc.get("text"):
+                        result_text += rc["text"]
+                report_id = _extract_report_id_from_tool_result(result_text)
+                if report_id:
+                    title, _ = pending_report_tool_ids.pop(tool_use_id)
+                    deliver_report_msgs.append(
+                        _build_deliver_report_action_message(
+                            report_id=report_id,
+                            title=title,
+                            base_id=msg_id,
+                            created_at=sm.created_at,
+                        )
+                    )
+
+            content = _flatten_strands_message_for_replay(raw)
+            if content:
+                out.append(
+                    {
+                        "type": "TextMessage",
+                        "id": msg_id,
+                        "createdAt": sm.created_at,
+                        "role": role,
+                        "content": content,
+                    }
+                )
+            # Inject deliver_report action messages right after the tool result
+            out.extend(deliver_report_msgs)
+
     return out
 
 

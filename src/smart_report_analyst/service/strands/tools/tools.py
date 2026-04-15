@@ -16,7 +16,7 @@ from smart_report_analyst.service.bedrock.kb_manager import KnowledgeBaseRetriev
 from smart_report_analyst.service.persistence.mysql.app_data_layer import app_data_layer
 from smart_report_analyst.service.bedrock.kb_manager import format_kb_trace_preview
 from smart_report_analyst.service.reports.narrative_pdf import render_narrative_pdf
-from smart_report_analyst.service.reports.temp_store import temp_report_store
+from smart_report_analyst.service.reports.reports_store import ReportsStore
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +216,8 @@ def build_report_builder_tools(turn_state: StrandsTurnState) -> list:
     @tool
     async def generate_report_pdf(report_content: str, title: str) -> str:
         """
-        Render a narrative markdown report to PDF and make it available in the chat UI.
+        Render a narrative markdown report to PDF, save it permanently, and deliver it
+        as a report card in the chat UI.
 
         Call this AFTER the report_builder has produced its final markdown output and the
         user has confirmed the brief. Pass the complete markdown text and a concise title.
@@ -226,7 +227,7 @@ def build_report_builder_tools(turn_state: StrandsTurnState) -> list:
             title: Short human-readable title for the report (used as filename and dashboard label).
 
         Returns:
-            Confirmation string with the temp_id so the orchestrator can relay it to the user.
+            Confirmation string with the permanent report_id for the orchestrator to relay.
         """
         step_name = turn_state.next_tool_step_name("generate_report_pdf")
         await turn_state.emit_trace_async(TraceKind.STEP_STARTED, {"step_name": step_name})
@@ -235,26 +236,31 @@ def build_report_builder_tools(turn_state: StrandsTurnState) -> list:
         )
         try:
             pdf_bytes = await asyncio.to_thread(render_narrative_pdf, report_content, title)
-            temp_id = temp_report_store.put(
+
+            # Auto-save permanently so the report survives navigation and history replay.
+            store = ReportsStore()
+            saved = await asyncio.to_thread(
+                store.save_report_from_markdown,
                 pdf_bytes=pdf_bytes,
                 markdown_content=report_content,
                 title=title,
                 thread_id=turn_state.thread_id,
                 agent_id="sra_orchestrator_agent",
-                main_agent_id=None,
             )
+            report_id = saved["id"]
+
             turn_state.last_report_result = {
-                "temp_id": temp_id,
+                "report_id": report_id,
                 "title": title,
                 "markdown_content": report_content,
             }
             await turn_state.emit_trace_async(
                 TraceKind.REASONING_LINE,
-                {"text": f"PDF ready (temp_id={temp_id}).\n"},
+                {"text": f"Report saved (id={report_id}).\n"},
             )
             return (
-                f"Report PDF generated successfully. temp_id={temp_id} title={title!r}. "
-                "The report card will appear in the chat for the user to preview, download, and save."
+                f"Report saved successfully. report_id={report_id} title={title!r}. "
+                "The report card will appear in the chat for the user to preview and download."
             )
         except Exception as exc:
             logger.exception("generate_report_pdf failed")
