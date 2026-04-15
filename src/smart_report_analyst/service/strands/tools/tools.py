@@ -214,7 +214,7 @@ def build_report_builder_tools(turn_state: StrandsTurnState) -> list:
     """Tools available to the orchestrator for delivering narrative reports to the UI."""
 
     @tool
-    def generate_report_pdf(report_content: str, title: str) -> str:
+    async def generate_report_pdf(report_content: str, title: str) -> str:
         """
         Render a narrative markdown report to PDF and make it available in the chat UI.
 
@@ -229,12 +229,12 @@ def build_report_builder_tools(turn_state: StrandsTurnState) -> list:
             Confirmation string with the temp_id so the orchestrator can relay it to the user.
         """
         step_name = turn_state.next_tool_step_name("generate_report_pdf")
-        asyncio.get_event_loop().run_until_complete(
-            turn_state.emit_trace_async(TraceKind.STEP_STARTED, {"step_name": step_name})
-        ) if turn_state.trace_queue else None
-
+        await turn_state.emit_trace_async(TraceKind.STEP_STARTED, {"step_name": step_name})
+        await turn_state.emit_trace_async(
+            TraceKind.REASONING_LINE, {"text": f"Rendering PDF: {title!r}…\n"}
+        )
         try:
-            pdf_bytes = render_narrative_pdf(report_content, title)
+            pdf_bytes = await asyncio.to_thread(render_narrative_pdf, report_content, title)
             temp_id = temp_report_store.put(
                 pdf_bytes=pdf_bytes,
                 markdown_content=report_content,
@@ -248,6 +248,10 @@ def build_report_builder_tools(turn_state: StrandsTurnState) -> list:
                 "title": title,
                 "markdown_content": report_content,
             }
+            await turn_state.emit_trace_async(
+                TraceKind.REASONING_LINE,
+                {"text": f"PDF ready (temp_id={temp_id}).\n"},
+            )
             return (
                 f"Report PDF generated successfully. temp_id={temp_id} title={title!r}. "
                 "The report card will appear in the chat for the user to preview, download, and save."
@@ -255,5 +259,9 @@ def build_report_builder_tools(turn_state: StrandsTurnState) -> list:
         except Exception as exc:
             logger.exception("generate_report_pdf failed")
             return f"Report generation failed: {exc}"
+        finally:
+            await turn_state.emit_trace_async(
+                TraceKind.STEP_FINISHED, {"step_name": step_name}
+            )
 
     return [generate_report_pdf]
