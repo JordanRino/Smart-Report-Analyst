@@ -21,6 +21,22 @@ SESSION_PREFIX = "session_"
 AGENT_PREFIX = "agent_"
 
 
+def logical_thread_id(stored_session_id: str) -> str:
+    """
+    Copilot ``threadId`` for history grouping.
+
+    Strands composite keys look like ``<thread_uuid>__<agent_suffix>`` (see
+    :func:`~smart_report_analyst.service.strands.session.scoped.composite_session_id`).
+    Multiple on-disk session dirs can share one logical thread; the sidebar shows
+    one row per thread. Legacy dirs with no ``__`` use the full id as the thread.
+    """
+    s = (stored_session_id or "").strip()
+    if "__" not in s:
+        return s
+    head, _tail = s.split("__", 1)
+    return head if head else s
+
+
 def _session_dir(storage_root: Path, session_id: str) -> Path:
     return storage_root / f"{SESSION_PREFIX}{session_id}"
 
@@ -50,15 +66,20 @@ def primary_agent_id(session_id: str) -> str | None:
 
 def list_history_sessions() -> list[dict[str, str]]:
     """
-    Sessions as Strands stores them: ``storage/session_<id>/session.json``.
-    Returns rows with ``id`` (thread/session id) and ``name`` (short label).
-    Sorted by last activity (session.json mtime, fallback dir mtime), newest first.
+    One sidebar row per Copilot thread.
+
+    Strands may create several ``storage/session_<composite_id>/`` trees per thread
+    (orchestrator, specialist-as-tool, report builder). We group by
+    :func:`logical_thread_id`, use the newest ``session.json`` mtime in each group
+    for ordering, and return ``id`` = the logical Copilot ``threadId`` (not the
+    composite storage key).
     """
     storage_dir = _resolved_storage_dir()
-    history: list[tuple[dict[str, str], float]] = []
-
     if not storage_dir.is_dir():
         return []
+
+    # logical_thread_id -> max mtime across all composite session dirs for that thread
+    last_activity: dict[str, float] = {}
 
     for child in storage_dir.iterdir():
         if not child.is_dir() or not child.name.startswith(SESSION_PREFIX):
@@ -71,18 +92,20 @@ def list_history_sessions() -> list[dict[str, str]]:
             mtime = session_file.stat().st_mtime
         except OSError:
             mtime = child.stat().st_mtime
-        history.append(
-            (
-                {
-                    "id": session_id,
-                    "name": f"Analysis {session_id[:8]}...",
-                },
-                mtime,
-            )
-        )
 
-    history.sort(key=lambda x: x[1], reverse=True)
-    return [h[0] for h in history]
+        logical = logical_thread_id(session_id)
+        prev = last_activity.get(logical)
+        if prev is None or mtime > prev:
+            last_activity[logical] = mtime
+
+    ordered = sorted(last_activity.items(), key=lambda x: x[1], reverse=True)
+    return [
+        {
+            "id": logical,
+            "name": f"Analysis {logical[:8]}...",
+        }
+        for logical, _mtime in ordered
+    ]
 
 
 _GENERATE_REPORT_PDF_TOOL = "generate_report_pdf"
