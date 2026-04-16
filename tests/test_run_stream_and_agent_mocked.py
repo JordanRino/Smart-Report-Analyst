@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from smart_report_analyst.service.agent_trace.events import TraceEvent, TraceKind
@@ -15,6 +16,7 @@ from smart_report_analyst.service.agent_trace.sse_reasoning_invariant import (
     assert_no_reasoning_content_after_end_for_same_message,
 )
 from smart_report_analyst.service.strands.agent import StrandsCopilotAgent
+from smart_report_analyst.service.strands.agents.registry import AGENT_ORCHESTRATOR
 from smart_report_analyst.service.strands.guardrails.classifier import TopicClassification
 from smart_report_analyst.service.strands.runner import run_stream
 
@@ -207,3 +209,52 @@ def test_strands_copilot_agent_execute_uses_mock_run_stream(mock_run_stream: Mag
     assert getattr(u0, "text", u0) == "hello"
     assert call_kw[0][1] == "t1"
     assert call_kw[1]["agent_name"] == "test_agent"
+
+
+@patch("smart_report_analyst.service.strands.agent.get_main_agent_id")
+@patch("smart_report_analyst.service.strands.agent.run_stream")
+def test_orchestrator_execute_emits_deliver_report_when_only_report_id(
+    mock_run_stream: MagicMock,
+    mock_get_main: MagicMock,
+) -> None:
+    """Permanent save sets report_id (not temp_id); chat must still get deliver_report frames."""
+    mock_get_main.return_value = "wlr_reporting_agent"
+    report_uuid = "550e8400-e29b-41d4-a716-446655440000"
+    turn = SimpleNamespace(
+        last_report_result={"report_id": report_uuid, "title": "Q1"},
+        last_tool_result={},
+    )
+
+    async def _fake_run_stream(_payload, _session_id: str, **kwargs):
+        _ = kwargs
+        yield {"type": "chunk", "data": "Report ready."}
+        yield {"type": "tool_result", "data": {}}
+        yield {"type": "turn_state", "data": turn}
+
+    mock_run_stream.side_effect = _fake_run_stream
+
+    async def _run() -> list[str]:
+        agent = StrandsCopilotAgent(name=AGENT_ORCHESTRATOR)
+        parts: list[str] = []
+        async for frame in agent.execute(
+            state={},
+            config={"properties": {"mainAgentId": "wlr_reporting_agent"}},
+            messages=[{"role": "user", "content": "make the pdf"}],
+            thread_id="thread-orch",
+        ):
+            parts.append(frame)
+        return parts
+
+    frames = asyncio.run(_run())
+    events = _sse_json_lines(frames)
+    starts = [e for e in events if e.get("type") == "TOOL_CALL_START"]
+    deliver = [e for e in starts if e.get("toolCallName") == "deliver_report"]
+    assert deliver, "expected deliver_report TOOL_CALL_START after permanent save"
+    args_deltas = [
+        e.get("delta", "")
+        for e in events
+        if e.get("type") == "TOOL_CALL_ARGS" and e.get("toolCallId") == deliver[0]["toolCallId"]
+    ]
+    joined = "".join(args_deltas)
+    assert report_uuid in joined
+    assert "Q1" in joined

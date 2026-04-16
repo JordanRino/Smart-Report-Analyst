@@ -39,7 +39,7 @@ class StrandsTurnState:
     """Per-turn mutable state shared across orchestrator and sub-agents."""
 
     last_tool_result: dict = field(default_factory=dict)
-    # Set by generate_report_pdf tool; consumed by agent.py to emit deliver_report event.
+    # Set by generate_report_pdf (report_id, title, …); agent.py emits deliver_report AG-UI when report_id is set.
     last_report_result: dict = field(default_factory=dict)
     # Copilot thread_id injected by runner so tools can use it without model passing it.
     thread_id: str = ""

@@ -330,9 +330,9 @@ class StrandsCopilotAgent(Agent):
             ):
                 yield frame
 
-        # Emit deliver_report action if the orchestrator called generate_report_pdf.
+        # Emit deliver_report action if generate_report_pdf saved a permanent report.
         report_result = run_state.last_report_result if run_state else {}
-        if report_result and report_result.get("temp_id"):
+        if report_result and report_result.get("report_id"):
             for frame in _yield_deliver_report_tool_events(
                 report_result=report_result,
                 parent_message_id=message_id,
