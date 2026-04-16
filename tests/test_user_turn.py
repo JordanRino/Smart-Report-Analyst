@@ -59,6 +59,36 @@ def test_parse_pdf_attachment() -> None:
     assert p.attachments[0].bytes_content == b"%PDF-1.4 fake"
 
 
+def test_parse_ag_ui_document_attachment() -> None:
+    """CopilotKit 1.56+ sends AG-UI InputContent for documents."""
+    b64 = base64.b64encode(b"%PDF-1.4 fake").decode("ascii")
+    p = parse_user_turn_from_messages(
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Summarize"},
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "data",
+                            "value": b64,
+                            "mimeType": "application/pdf",
+                        },
+                        "metadata": {"filename": "deck.pdf"},
+                    },
+                ],
+                "id": "1",
+                "createdAt": "",
+            }
+        ]
+    )
+    assert p.text == "Summarize"
+    assert len(p.attachments) == 1
+    assert p.attachments[0].format == "pdf"
+    assert p.attachments[0].bytes_content == b"%PDF-1.4 fake"
+
+
 def test_user_turn_to_strands_string_without_files() -> None:
     out = user_turn_to_strands_prompt(UserTurnPayload(text="hi"))
     assert out == "hi"

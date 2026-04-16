@@ -62,10 +62,26 @@ class UserTurnPayload:
 
 def attachment_from_inline_dict(block: dict[str, Any], index: int) -> AttachmentRef | None:
     """Parse a single attachment-like dict from message content (best-effort)."""
-    mime = str(block.get("mimeType") or block.get("mediaType") or block.get("type") or "").strip()
-    name = str(block.get("name") or block.get("filename") or f"upload_{index}").strip()
+    # CopilotKit 1.56+ / AG-UI: { type: "document", source: { type: "data", value: base64, mimeType }, metadata?: { filename } }
+    source = block.get("source")
+    mime = ""
+    name = ""
+    raw_b64: Any = None
+    if isinstance(source, dict) and str(source.get("type") or "").lower() == "data":
+        mime = str(source.get("mimeType") or source.get("mime_type") or "").strip()
+        raw_b64 = source.get("value") or source.get("content") or source.get("data")
+        meta = block.get("metadata")
+        if isinstance(meta, dict):
+            name = str(meta.get("filename") or meta.get("name") or "").strip()
+    if not name:
+        name = str(block.get("name") or block.get("filename") or "").strip()
+    if not mime:
+        mime = str(block.get("mimeType") or block.get("mediaType") or "").strip()
+    if not raw_b64:
+        raw_b64 = block.get("content") or block.get("data") or block.get("bytes")
+    if not name:
+        name = f"upload_{index}"
 
-    raw_b64 = block.get("content") or block.get("data") or block.get("bytes")
     blob: bytes | None = None
     if isinstance(raw_b64, str) and raw_b64:
         try:
@@ -74,6 +90,10 @@ def attachment_from_inline_dict(block: dict[str, Any], index: int) -> Attachment
             blob = None
     elif isinstance(raw_b64, (bytes, bytearray)):
         blob = bytes(raw_b64)
+
+    part_type = str(block.get("type") or "").lower()
+    if part_type in ("image", "audio", "video"):
+        return None
 
     fmt = _format_from_mime(mime) if mime else None
     if fmt is None and name:
