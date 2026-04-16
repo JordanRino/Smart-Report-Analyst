@@ -24,15 +24,21 @@ _MIME_TO_FORMAT: dict[str, DocumentFormat] = {
     "application/vnd.ms-excel": "xls",
 }
 
-_SAFE_NAME = re.compile(r"[^a-zA-Z0-9._-]+")
+# Bedrock ConverseStream document ``name``: only alphanumeric, whitespace, hyphens,
+# parentheses, square brackets; no run of two or more spaces.
+# (Underscores and periods — common in filenames — are not allowed.)
+_BEDROCK_DOC_NAME_DISALLOWED = re.compile(r"[^a-zA-Z0-9 \-\(\)\[\]]+")
 
 
-def _neutral_attachment_name(original: str, index: int) -> str:
-    base = (original or "attachment").strip() or "attachment"
-    base = _SAFE_NAME.sub("_", base)[:120] or "attachment"
-    if "." not in base:
-        base = f"{base}_{index}.bin"
-    return base
+def _bedrock_document_name(original: str, index: int) -> str:
+    s = (original or "").strip() or f"document_{index}"
+    s = _BEDROCK_DOC_NAME_DISALLOWED.sub(" ", s)
+    s = re.sub(r" {2,}", " ", s).strip()
+    if not s:
+        s = f"document {index}"
+    if len(s) > 200:
+        s = s[:200].rstrip()
+    return s
 
 
 def _format_from_mime(mime: str) -> DocumentFormat | None:
@@ -117,7 +123,7 @@ def attachment_from_inline_dict(block: dict[str, Any], index: int) -> Attachment
         return None
 
     return AttachmentRef(
-        neutral_name=_neutral_attachment_name(name, index),
+        neutral_name=_bedrock_document_name(name, index),
         format=fmt,
         bytes_content=blob,
         mime_type=mime or None,

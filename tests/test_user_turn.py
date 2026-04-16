@@ -57,6 +57,8 @@ def test_parse_pdf_attachment() -> None:
     assert len(p.attachments) == 1
     assert p.attachments[0].format == "pdf"
     assert p.attachments[0].bytes_content == b"%PDF-1.4 fake"
+    # Bedrock document name: no underscores/dots — sanitized to spaces
+    assert p.attachments[0].neutral_name == "report pdf"
 
 
 def test_parse_ag_ui_document_attachment() -> None:
@@ -87,6 +89,7 @@ def test_parse_ag_ui_document_attachment() -> None:
     assert len(p.attachments) == 1
     assert p.attachments[0].format == "pdf"
     assert p.attachments[0].bytes_content == b"%PDF-1.4 fake"
+    assert p.attachments[0].neutral_name == "deck pdf"
 
 
 def test_user_turn_to_strands_string_without_files() -> None:
@@ -100,7 +103,7 @@ def test_user_turn_to_strands_blocks_with_pdf() -> None:
             text="Verify",
             attachments=[
                 AttachmentRef(
-                    neutral_name="doc_0.pdf",
+                    neutral_name="report pdf",
                     format="pdf",
                     bytes_content=b"%PDF",
                     mime_type="application/pdf",
@@ -112,4 +115,5 @@ def test_user_turn_to_strands_blocks_with_pdf() -> None:
     assert out[0] == {"text": "Verify"}
     assert "document" in out[1]
     assert out[1]["document"]["format"] == "pdf"
+    assert out[1]["document"]["name"] == "report pdf"
     assert out[1]["document"]["source"]["bytes"] == b"%PDF"
