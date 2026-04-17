@@ -121,6 +121,19 @@ def test_session_messages_to_copilot_messages_drops_tool_noise() -> None:
     assert "tool result" not in (out[0]["content"] or "").lower()
 
 
+def test_session_messages_to_copilot_messages_preserves_newlines_in_text() -> None:
+    """Do not collapse markdown newlines inside a single text block."""
+    asst: Message = {
+        "role": "assistant",
+        "content": [{"text": "Line one.\n\n## Heading\n\n| a | b |\n|---|-|"}],
+    }
+    sms = [SessionMessage.from_message(asst, 0)]
+    out = reader_mod.session_messages_to_copilot_messages(sms)
+    assert len(out) == 1
+    assert "\n\n## Heading" in out[0]["content"]
+    assert "| a | b |" in out[0]["content"]
+
+
 def test_session_messages_to_copilot_messages_user_assistant() -> None:
     user_msg: Message = {
         "role": "user",
