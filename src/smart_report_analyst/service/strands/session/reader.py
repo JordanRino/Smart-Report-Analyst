@@ -325,13 +325,16 @@ def get_copilot_state_for_thread(
                 "state": agent_state,
                 "messages": [],
             }
+        # Strands stores messages under ``agents/agent_<id>/messages`` where ``id`` is often
+        # ``default`` (not the CopilotKit registration name). Prefer the on-disk agent id.
+        strands_agent_id = primary_agent_id(strands_sid) or agent_name
         try:
-            session_messages = load_ordered_session_messages(strands_sid, agent_name)
+            session_messages = load_ordered_session_messages(strands_sid, strands_agent_id)
         except Exception:
             logger.exception(
                 "load_session_messages_failed session_id=%s agent_id=%s",
                 strands_sid,
-                agent_name,
+                strands_agent_id,
             )
             return {
                 "threadId": thread_id,

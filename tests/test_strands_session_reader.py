@@ -11,6 +11,7 @@ from strands.types.content import Message
 from strands.types.session import SessionMessage
 
 from smart_report_analyst.service.strands.session import reader as reader_mod
+from smart_report_analyst.service.strands.session.scoped import composite_session_id
 
 
 def test_list_history_sessions_empty_dir(tmp_path: Path) -> None:
@@ -101,6 +102,29 @@ def test_session_messages_to_copilot_messages_user_assistant() -> None:
     assert out[0]["content"] == "Hello"
     assert out[1]["role"] == "assistant"
     assert out[1]["content"] == "Hi there"
+
+
+def test_get_copilot_state_uses_on_disk_agent_id_not_copilot_name(tmp_path: Path) -> None:
+    """Strands uses ``agent_default`` on disk; list_messages must use that id."""
+    tid = "thread-uuid-0000-0000-0000-000000000001"
+    orch = "sra_orchestrator_agent"
+    strands_sid = composite_session_id(tid, orch)
+    session_dir = tmp_path / f"session_{strands_sid}"
+    session_dir.mkdir(parents=True)
+    (session_dir / "session.json").write_text("{}", encoding="utf-8")
+    (session_dir / "agents" / "agent_default").mkdir(parents=True)
+
+    captured: list[tuple[str, str]] = []
+
+    def fake_load(sid: str, agent_id: str):
+        captured.append((sid, agent_id))
+        return []
+
+    with patch.object(reader_mod, "_resolved_storage_dir", return_value=tmp_path):
+        with patch.object(reader_mod, "load_ordered_session_messages", side_effect=fake_load):
+            reader_mod.get_copilot_state_for_thread(tid, agent_name=orch)
+
+    assert captured == [(strands_sid, "default")]
 
 
 def test_get_copilot_state_for_thread_missing_session(tmp_path: Path) -> None:
