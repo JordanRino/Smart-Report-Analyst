@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -106,6 +107,47 @@ def list_history_sessions() -> list[dict[str, str]]:
         }
         for logical, _mtime in ordered
     ]
+
+
+def _thread_id_safe_for_delete(thread_id: str) -> bool:
+    tid = (thread_id or "").strip()
+    if not tid or len(tid) > 256:
+        return False
+    if any(c in tid for c in ("/", "\\", "..")):
+        return False
+    return True
+
+
+def delete_thread_strands_sessions(thread_id: str) -> int:
+    """Remove every ``session_*`` directory whose logical thread id equals *thread_id*.
+
+    Returns the number of session directories removed. Orchestrator JSON is removed
+    separately via :func:`delete_orchestrator_state_file`.
+    """
+    if not _thread_id_safe_for_delete(thread_id):
+        raise ValueError("Invalid threadId")
+    tid = thread_id.strip()
+    storage_dir = _resolved_storage_dir()
+    if not storage_dir.is_dir():
+        return 0
+    removed = 0
+    for child in storage_dir.iterdir():
+        if not child.is_dir() or not child.name.startswith(SESSION_PREFIX):
+            continue
+        session_id = child.name[len(SESSION_PREFIX) :]
+        if logical_thread_id(session_id) != tid:
+            continue
+        try:
+            shutil.rmtree(child, ignore_errors=False)
+            removed += 1
+        except OSError:
+            logger.exception(
+                "delete_thread_session_dir_failed thread_id=%s path=%s",
+                tid,
+                child,
+            )
+            raise
+    return removed
 
 
 _GENERATE_REPORT_PDF_TOOL = "generate_report_pdf"

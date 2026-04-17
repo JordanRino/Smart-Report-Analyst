@@ -28,10 +28,14 @@ from smart_report_analyst.service.reports.report_pdf import (
 from smart_report_analyst.service.strands.agent import StrandsCopilotAgent
 from smart_report_analyst.service.strands.agents.registry import is_main_specialist
 from smart_report_analyst.service.strands.session.orchestrator_state import (
+    delete_orchestrator_state_file,
     get_main_agent_id,
     set_main_agent_id,
 )
-from smart_report_analyst.service.strands.session.reader import list_history_sessions
+from smart_report_analyst.service.strands.session.reader import (
+    delete_thread_strands_sessions,
+    list_history_sessions,
+)
 
 patch_copilotkit_info_html_for_agent_map()
 
@@ -271,6 +275,17 @@ async def get_chat_history():
     Used by the Next.js HistorySidebar; ``id`` matches CopilotKit ``threadId`` / Strands ``session_id``.
     """
     return list_history_sessions()
+
+
+@router.delete("/session/{thread_id}")
+async def delete_chat_session(thread_id: str) -> JSONResponse:
+    """Remove all Strands storage and orchestrator state for a logical thread id."""
+    try:
+        delete_thread_strands_sessions(thread_id.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    delete_orchestrator_state_file(thread_id.strip())
+    return JSONResponse(content={"threadId": thread_id.strip(), "deleted": True})
 
 
 def _copilot_context_from_request(request: Request, body: dict) -> CopilotKitContext:

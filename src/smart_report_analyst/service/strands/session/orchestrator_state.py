@@ -84,6 +84,18 @@ def get_main_agent_id(thread_id: str) -> str | None:
     return mid.strip() if isinstance(mid, str) and mid.strip() else None
 
 
+def delete_orchestrator_state_file(thread_id: str) -> None:
+    """Remove persisted orchestrator state for *thread_id* if the file exists."""
+    if not thread_id or not thread_id.strip():
+        return
+    path = _state_path(thread_id.strip())
+    try:
+        if path.is_file():
+            path.unlink()
+    except OSError:
+        logger.exception("orchestrator_state_delete_failed thread_id=%s path=%s", thread_id, path)
+
+
 def set_main_agent_id(thread_id: str, main_agent_id: str | None) -> None:
     """Convenience: write (or clear) ``mainAgentId`` in the persisted state.
 

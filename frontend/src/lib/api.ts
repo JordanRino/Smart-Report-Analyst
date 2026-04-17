@@ -104,4 +104,14 @@ export const api = {
     }
     return (await response.json()) as SpecialistState;
   },
+
+  /** Remove Strands session dirs and orchestrator state for a logical thread id. */
+  async deleteSession(threadId: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/session/${encodeURIComponent(threadId)}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      throw new Error(`deleteSession HTTP error: ${response.status}`);
+    }
+  },
 };

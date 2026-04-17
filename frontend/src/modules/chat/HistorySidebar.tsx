@@ -1,9 +1,9 @@
 "use client";
 import { useApp } from "@/providers/AppContext";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PlusIcon, FileTextIcon, Loader2, LayoutGrid } from "lucide-react";
+import { PlusIcon, FileTextIcon, Loader2, LayoutGrid, Trash2 } from "lucide-react";
 import { api, ChatSession } from "@/lib/api";
 import { AGENT_ORCHESTRATOR_ID, DEFAULT_AGENT_ID } from "@/lib/agents";
 
@@ -19,22 +19,46 @@ export function HistorySidebar() {
   const [threads, setThreads] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const refreshHistory = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api.getHistory();
+      setThreads(data);
+    } catch {
+      setError("Failed to load history.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchHistory = async () => {
+    void refreshHistory();
+  }, [activeThreadId, refreshHistory]);
+
+  const onDeleteSession = useCallback(
+    async (e: React.MouseEvent<HTMLButtonElement>, threadId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (deletingId) return;
+      if (!window.confirm("Delete this conversation? This cannot be undone.")) return;
+      setDeletingId(threadId);
       try {
-        setLoading(true);
-        setError(null);
-        const data = await api.getHistory();
-        setThreads(data);
+        await api.deleteSession(threadId);
+        setThreads((prev) => prev.filter((t) => t.id !== threadId));
+        if (activeThreadId === threadId) {
+          startNewConversation();
+        }
       } catch {
-        setError("Failed to load history.");
+        setError("Failed to delete conversation.");
       } finally {
-        setLoading(false);
+        setDeletingId(null);
       }
-    };
-    void fetchHistory();
-  }, [activeThreadId]);
+    },
+    [activeThreadId, deletingId, startNewConversation],
+  );
 
   return (
     <div className="flex h-screen w-72 flex-col border-r border-zinc-800 bg-zinc-900 text-zinc-300">
@@ -62,25 +86,44 @@ export function HistorySidebar() {
           <p className="py-4 text-center text-xs italic text-zinc-600">No past conversations yet.</p>
         ) : (
           threads.map((t) => (
-            <button
+            <div
               key={t.id}
-              onClick={() => {
-                setPickedAgentId(AGENT_ORCHESTRATOR_ID);
-                setOrchestratorMainAgentId(DEFAULT_AGENT_ID);
-                setActiveThreadId(t.id);
-              }}
-              className={`flex w-full items-center gap-3 rounded-lg p-3 text-sm transition-all ${
+              className={`flex w-full items-center gap-1 rounded-lg text-sm transition-all ${
                 activeThreadId === t.id
                   ? "bg-zinc-800 text-white shadow-inner ring-1 ring-zinc-700"
                   : "hover:bg-zinc-800/50 hover:text-zinc-100"
               }`}
             >
-              <FileTextIcon
-                size={16}
-                className={activeThreadId === t.id ? "text-blue-400" : "text-zinc-500"}
-              />
-              <span className="truncate">{t.name}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPickedAgentId(AGENT_ORCHESTRATOR_ID);
+                  setOrchestratorMainAgentId(DEFAULT_AGENT_ID);
+                  setActiveThreadId(t.id);
+                }}
+                className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left"
+              >
+                <FileTextIcon
+                  size={16}
+                  className={activeThreadId === t.id ? "text-blue-400" : "text-zinc-500"}
+                />
+                <span className="truncate">{t.name}</span>
+              </button>
+              <button
+                type="button"
+                title="Delete conversation"
+                disabled={deletingId === t.id}
+                onClick={(e) => void onDeleteSession(e, t.id)}
+                className="shrink-0 rounded-md p-2 text-zinc-500 opacity-60 transition hover:bg-red-950/50 hover:text-red-400 hover:opacity-100 disabled:opacity-40"
+                aria-label={`Delete ${t.name}`}
+              >
+                {deletingId === t.id ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Trash2 size={16} />
+                )}
+              </button>
+            </div>
           ))
         )}
       </div>
