@@ -122,19 +122,16 @@ def _visible_replay_text(msg: dict[str, Any]) -> str:
     """Human-visible text for history replay: ``text`` blocks only, optional attachment hint.
 
     Omits ``toolUse`` / ``toolResult`` (no ``[main_specialist]``, ``[tool result]``, etc.).
-    Preserves newlines inside each ``text`` block (markdown tables, lists). Multiple
-    ``text`` blocks in one message are joined with blank lines.
     """
     parts: list[str] = []
     for block in msg.get("content") or []:
         if not isinstance(block, dict):
             continue
         if block.get("text"):
-            parts.append(str(block["text"]).strip())
+            parts.append(str(block["text"]))
         elif block.get("document"):
             parts.append("[attachment]")
-    raw = "\n\n".join(p for p in parts if p) if parts else ""
-    return raw.strip()
+    return "".join(parts).strip()
 
 
 def _build_deliver_report_action_message(
