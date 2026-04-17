@@ -82,6 +82,45 @@ def test_list_history_sessions_two_threads_sorted_by_newest(tmp_path: Path) -> N
     assert rows[1]["id"] == t_old
 
 
+def test_session_messages_to_copilot_messages_drops_tool_noise() -> None:
+    """Replay shows only text blocks; no [main_specialist] or [tool result]."""
+    user_tool_only: Message = {
+        "role": "user",
+        "content": [
+            {
+                "toolResult": {
+                    "toolUseId": "x",
+                    "status": "success",
+                    "content": [{"text": "sql output"}],
+                }
+            }
+        ],
+    }
+    asst_text_and_tool: Message = {
+        "role": "assistant",
+        "content": [
+            {"text": "I'll check that for you."},
+            {
+                "toolUse": {
+                    "toolUseId": "t1",
+                    "name": "main_specialist",
+                    "input": {"input": "task"},
+                }
+            },
+        ],
+    }
+    sms = [
+        SessionMessage.from_message(user_tool_only, 0),
+        SessionMessage.from_message(asst_text_and_tool, 1),
+    ]
+    out = reader_mod.session_messages_to_copilot_messages(sms)
+    assert len(out) == 1
+    assert out[0]["role"] == "assistant"
+    assert out[0]["content"] == "I'll check that for you."
+    assert "[main_specialist]" not in out[0]["content"]
+    assert "tool result" not in (out[0]["content"] or "").lower()
+
+
 def test_session_messages_to_copilot_messages_user_assistant() -> None:
     user_msg: Message = {
         "role": "user",
