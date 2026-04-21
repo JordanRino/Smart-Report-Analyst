@@ -26,8 +26,8 @@ set -e
 # CopilotKit UI (Strands agent): backend + frontend on EC2
 # =============================================================================
 # Replace with this instance's IPv4 (the same host:port you type in the browser).
-# Example: EC2_IP="10.0.1.42"
-EC2_IP="<REPLACE_WITH_PRIVATE_OR_REACHABLE_IP>"
+# Example: EC2_IP="192.168.228.91"
+EC2_IP="192.168.228.91"
 
 # --- Root .env (repo root): copy from .env.example and set at least AGENT_BACKEND, AWS, MySQL, etc.
 # Add or merge these lines so the API accepts your Next.js origin:
