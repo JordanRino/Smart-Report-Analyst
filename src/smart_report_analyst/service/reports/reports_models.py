@@ -37,3 +37,11 @@ class RecordSaveRequest(BaseModel):
     title: str | None = None
     source_message_id: str | None = None
     main_agent_id: str | None = None
+    filters_json: str | None = Field(
+        default=None,
+        description="JSON array of offline view filters (stored with the record).",
+    )
+    composed_sql: str | None = Field(
+        default=None,
+        description="Display-only composed SQL snapshot at save time.",
+    )

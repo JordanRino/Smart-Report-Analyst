@@ -76,7 +76,9 @@ CREATE TABLE IF NOT EXISTS saved_reports (
   pdf_size_bytes INTEGER NOT NULL,
   source_message_id TEXT,
   main_agent_id TEXT,
-  kind TEXT NOT NULL DEFAULT 'report'
+  kind TEXT NOT NULL DEFAULT 'report',
+  filters_json TEXT,
+  composed_sql TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_saved_reports_created ON saved_reports(created_at DESC);
@@ -104,6 +106,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE saved_reports ADD COLUMN kind TEXT NOT NULL DEFAULT 'report'"
         )
+    if "filters_json" not in names:
+        conn.execute("ALTER TABLE saved_reports ADD COLUMN filters_json TEXT")
+    if "composed_sql" not in names:
+        conn.execute("ALTER TABLE saved_reports ADD COLUMN composed_sql TEXT")
     # Index on kind — created here (after column exists) so it is safe for migrated DBs.
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_saved_reports_kind ON saved_reports(kind)"
@@ -125,8 +131,16 @@ def _payload_sha256(data: dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _record_payload_sha256(results: list[Any], executed_sql: str) -> str:
-    return _payload_sha256({"executed_sql": executed_sql, "results": results})
+def _record_payload_sha256(
+    results: list[Any],
+    executed_sql: str,
+    filters_json: str | None = None,
+) -> str:
+    data: dict[str, Any] = {"executed_sql": executed_sql, "results": results}
+    fj = (filters_json or "").strip()
+    if fj:
+        data["filters_json"] = fj
+    return _payload_sha256(data)
 
 
 def _report_payload_sha256(markdown_content: str, title: str) -> str:
@@ -193,6 +207,8 @@ class ReportsStore:
         title: str | None = None,
         source_message_id: str | None = None,
         main_agent_id: str | None = None,
+        filters_json: str | None = None,
+        composed_sql: str | None = None,
     ) -> dict[str, Any]:
         if not thread_id.strip():
             raise ReportPdfClientError("thread_id is required")
@@ -201,7 +217,9 @@ class ReportsStore:
         if len(results) > MAX_RESULT_ROWS:
             raise ReportPdfClientError(f"Too many rows (max {MAX_RESULT_ROWS})")
 
-        pay_sha = _record_payload_sha256(results, executed_sql)
+        filters_norm = (filters_json or "").strip() or None
+        composed_norm = (composed_sql or "").strip() or None
+        pay_sha = _record_payload_sha256(results, executed_sql, filters_norm)
         conn = self._conn()
         try:
             existing = self._find_by_sha256(conn, pay_sha, KIND_RECORD)
@@ -229,6 +247,8 @@ class ReportsStore:
                 "results": results,
                 "refined_user_question": refined_user_question,
                 "row_count": row_count,
+                "filters_json": filters_norm,
+                "composed_sql": composed_norm,
             }
             (files_dir / "snapshot.json").write_text(
                 json.dumps(snapshot, indent=2, default=str), encoding="utf-8"
@@ -240,8 +260,9 @@ class ReportsStore:
                   id, created_at, updated_at, thread_id, agent_id, title,
                   executed_sql, row_count, results_row_count,
                   payload_sha256, pdf_sha256, pdf_size_bytes,
-                  source_message_id, main_agent_id, kind
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  source_message_id, main_agent_id, kind,
+                  filters_json, composed_sql
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     rid, now_ms, now_ms,
@@ -252,6 +273,8 @@ class ReportsStore:
                     pay_sha, csv_sha, len(csv_bytes),
                     (source_message_id or "").strip() or None,
                     main_raw, KIND_RECORD,
+                    filters_norm,
+                    composed_norm,
                 ),
             )
             conn.commit()
@@ -324,8 +347,9 @@ class ReportsStore:
                   id, created_at, updated_at, thread_id, agent_id, title,
                   executed_sql, row_count, results_row_count,
                   payload_sha256, pdf_sha256, pdf_size_bytes,
-                  source_message_id, main_agent_id, kind
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  source_message_id, main_agent_id, kind,
+                  filters_json, composed_sql
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     rid, now_ms, now_ms,
@@ -336,6 +360,8 @@ class ReportsStore:
                     pay_sha, pdf_sha, len(pdf_bytes),
                     (source_message_id or "").strip() or None,
                     main_raw, KIND_REPORT,
+                    None,
+                    None,
                 ),
             )
             conn.commit()
@@ -428,8 +454,9 @@ class ReportsStore:
                   id, created_at, updated_at, thread_id, agent_id, title,
                   executed_sql, row_count, results_row_count,
                   payload_sha256, pdf_sha256, pdf_size_bytes,
-                  source_message_id, main_agent_id, kind
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  source_message_id, main_agent_id, kind,
+                  filters_json, composed_sql
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     rid, now_ms, now_ms,
@@ -440,6 +467,8 @@ class ReportsStore:
                     pay_sha, pdf_sha, len(pdf_bytes),
                     (source_message_id or "").strip() or None,
                     main_raw, KIND_REPORT,
+                    None,
+                    None,
                 ),
             )
             conn.commit()
@@ -499,7 +528,8 @@ class ReportsStore:
                 SELECT id, created_at, updated_at, thread_id, agent_id, title,
                        executed_sql, row_count, results_row_count,
                        payload_sha256, pdf_sha256, pdf_size_bytes,
-                       source_message_id, main_agent_id, kind
+                       source_message_id, main_agent_id, kind,
+                       filters_json, composed_sql
                 FROM saved_reports
                 {wh}
                 ORDER BY created_at DESC
@@ -519,7 +549,7 @@ class ReportsStore:
                 "SELECT id, created_at, updated_at, thread_id, agent_id, title, "
                 "executed_sql, row_count, results_row_count, "
                 "payload_sha256, pdf_sha256, pdf_size_bytes, source_message_id, "
-                "main_agent_id, kind "
+                "main_agent_id, kind, filters_json, composed_sql "
                 "FROM saved_reports WHERE id = ?",
                 (report_id,),
             ).fetchone()

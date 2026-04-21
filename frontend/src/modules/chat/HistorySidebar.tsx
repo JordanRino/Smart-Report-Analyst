@@ -3,7 +3,7 @@ import { useApp } from "@/providers/AppContext";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PlusIcon, FileTextIcon, Loader2, LayoutGrid, Trash2 } from "lucide-react";
+import { PlusIcon, FileTextIcon, Loader2, LayoutGrid, Table2, Trash2 } from "lucide-react";
 import { api, ChatSession } from "@/lib/api";
 import { AGENT_ORCHESTRATOR_ID, DEFAULT_AGENT_ID } from "@/lib/agents";
 
@@ -150,6 +150,17 @@ export function HistorySidebar() {
         >
           <LayoutGrid size={16} />
           Reports
+        </Link>
+        <Link
+          href="/records"
+          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
+            pathname === "/records" || pathname?.startsWith("/records/")
+              ? "bg-zinc-800 text-white"
+              : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
+          }`}
+        >
+          <Table2 size={16} />
+          Records
         </Link>
       </div>
     </div>

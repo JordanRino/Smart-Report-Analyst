@@ -27,6 +27,10 @@ export interface ReportSummary {
   main_agent_id?: string | null;
   /** "record" (CSV) or "report" (narrative PDF). */
   kind?: "record" | "report";
+  /** Offline view filters (JSON string) for saved records. */
+  filters_json?: string | null;
+  /** Display-only composed SQL at save time. */
+  composed_sql?: string | null;
 }
 
 export interface ReportsListResponse {

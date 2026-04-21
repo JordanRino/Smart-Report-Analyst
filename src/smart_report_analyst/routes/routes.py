@@ -146,6 +146,8 @@ async def create_saved_record(
             title=body.title,
             source_message_id=body.source_message_id,
             main_agent_id=body.main_agent_id,
+            filters_json=body.filters_json,
+            composed_sql=body.composed_sql,
         )
     except ReportPdfClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

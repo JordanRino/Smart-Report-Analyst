@@ -2,7 +2,9 @@
 
 import { useApp } from "@/providers/AppContext";
 import { getApiPrefix } from "@/lib/env";
-import { Download, Save, Table2 } from "lucide-react";
+import { MAX_DRAFT_ROWS, writeDraft } from "@/modules/records/recordsDraftStorage";
+import { useRouter } from "next/navigation";
+import { Download, LayoutGrid, Save, Table2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -59,6 +61,7 @@ export function SqlResultPdfReport({
   refinedUserQuestion,
   rowCount,
 }: Props) {
+  const router = useRouter();
   const { effectiveThreadId, pickedAgentId, orchestratorMainAgentId } = useApp();
 
   const rows = useMemo(
@@ -138,6 +141,18 @@ export function SqlResultPdfReport({
     }
   }, [saving, savedMeta, saveKey, rows, query, refinedUserQuestion, rowCount,
       effectiveThreadId, pickedAgentId, orchestratorMainAgentId]);
+
+  const openInRecords = useCallback(() => {
+    writeDraft({
+      version: 1,
+      baseSql: query,
+      rows: rows.slice(0, MAX_DRAFT_ROWS),
+      refinedUserQuestion: refinedUserQuestion ?? null,
+      rowCount: rowCount ?? null,
+      filters: [],
+    });
+    router.push("/records/explore");
+  }, [router, rows, query, refinedUserQuestion, rowCount]);
 
   const fileSlug = (refinedUserQuestion || "records")
     .replace(/[^a-zA-Z0-9_-]+/g, "-")
@@ -247,6 +262,15 @@ export function SqlResultPdfReport({
               onClick={() => setPreviewOpen(true)}
             >
               <Table2 size={13} aria-hidden /> Preview
+            </button>
+            <button
+              type="button"
+              disabled={rows.length === 0}
+              className="inline-flex items-center gap-1 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-950 hover:bg-indigo-100 disabled:opacity-60"
+              onClick={openInRecords}
+              title={`Opens the records workspace with up to ${MAX_DRAFT_ROWS} rows in this session`}
+            >
+              <LayoutGrid size={13} aria-hidden /> Open in records
             </button>
             <button
               type="button"

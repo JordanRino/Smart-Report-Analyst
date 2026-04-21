@@ -15,6 +15,7 @@ import { SqlResultPdfReport } from "@/modules/reports/SqlResultPdfReport";
 import { ReportBuilderCard } from "@/modules/reports/ReportBuilderCard";
 import { ReasoningTraceMessage } from "@/components/agent-trace/ReasoningTraceMessage";
 import { AgentPicker } from "./AgentPicker";
+import { CopilotPrefillInput } from "./CopilotPrefillInput";
 import { getApiPrefix } from "@/lib/env";
 import {
   CHAT_ATTACHMENTS_ACCEPT,
@@ -226,6 +227,7 @@ export function ChatInterface() {
         className="min-h-0 flex-1"
         observabilityHooks={observabilityHooks}
         RenderMessage={AgentRenderMessage}
+        Input={CopilotPrefillInput}
         attachments={{
           enabled: true,
           accept: CHAT_ATTACHMENTS_ACCEPT,
