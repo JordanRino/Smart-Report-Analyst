@@ -27,7 +27,7 @@ export function AgentPicker() {
   }, [open]);
 
   const selected = MAIN_SPECIALIST_OPTIONS.find((a) => a.id === orchestratorMainAgentId);
-  const triggerLabel = selected?.shortLabel ?? "Analyst";
+  const triggerLabel = selected?.shortLabel ?? "Choose…";
 
   const onPick = useCallback(
     (id: AgentId) => {
@@ -47,7 +47,7 @@ export function AgentPicker() {
     <div className="border-b border-white/8 bg-[#0a0a0a] px-4 py-2">
       <div className="mx-auto flex max-w-5xl items-center justify-end gap-3">
         <span className="shrink-0 text-[10px] font-medium tracking-[0.22em] text-neutral-500 uppercase">
-          Main agent
+          Team specialist
         </span>
         <div ref={rootRef} className="relative w-[min(100%,200px)]">
           <button
@@ -97,7 +97,7 @@ export function AgentPicker() {
               setOrchestratorMainAgentId(null);
               void api.setSpecialist(effectiveThreadId, null).catch(() => {});
             }}
-            title="Clear main agent"
+            title="Clear specialist"
           >
             Reset
           </button>

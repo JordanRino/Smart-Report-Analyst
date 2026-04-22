@@ -18,10 +18,10 @@ def test_merge_config_with_context_properties_fills_missing_config() -> None:
 
 
 def test_merge_config_with_context_properties_shallow_overrides() -> None:
-    ctx = cast_context({"mainAgentId": "loan_report_analyst_agent"})
+    ctx = cast_context({"mainAgentId": "wlr_reporting_agent"})
     merged = _merge_config_with_context_properties({"properties": {"foo": 1}}, ctx)
     assert merged["properties"]["foo"] == 1
-    assert merged["properties"]["mainAgentId"] == "loan_report_analyst_agent"
+    assert merged["properties"]["mainAgentId"] == "wlr_reporting_agent"
 
 
 def test_merge_empty_context_returns_original() -> None:

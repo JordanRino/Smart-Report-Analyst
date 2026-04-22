@@ -8,7 +8,6 @@ from dataclasses import dataclass
 MAIN_SPECIALIST_AGENT_IDS: frozenset[str] = frozenset(
     {
         "wlr_reporting_agent",
-        "loan_report_analyst_agent",
     }
 )
 
@@ -27,10 +26,6 @@ _REGISTRY: dict[str, MainSpecialistEntry] = {
     "wlr_reporting_agent": MainSpecialistEntry(
         agent_id="wlr_reporting_agent",
         display_name="WLR Reporting Agent",
-    ),
-    "loan_report_analyst_agent": MainSpecialistEntry(
-        agent_id="loan_report_analyst_agent",
-        display_name="Loan Report Analyst (legacy)",
     ),
 }
 

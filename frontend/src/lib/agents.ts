@@ -14,12 +14,6 @@ export const AGENTS = [
     description: "SBA loan analytics, SQL, and PDF reports",
   },
   {
-    id: "loan_report_analyst_agent",
-    label: "Loan Report Analyst (legacy)",
-    shortLabel: "Loan Analyst",
-    description: "Same as WLR — kept for backward compatibility",
-  },
-  {
     id: "sra_orchestrator_agent",
     label: "Report session (orchestrator)",
     shortLabel: "Orchestrator",
@@ -33,9 +27,7 @@ export type AgentId = (typeof AGENTS)[number]["id"];
 export const AGENT_ORCHESTRATOR_ID: AgentId = "sra_orchestrator_agent";
 
 /** Subset for orchestrator ``properties.mainAgentId`` (data specialists only). */
-export const MAIN_SPECIALIST_OPTIONS = AGENTS.filter(
-  (a) => a.id === "wlr_reporting_agent" || a.id === "loan_report_analyst_agent",
-);
+export const MAIN_SPECIALIST_OPTIONS = AGENTS.filter((a) => a.id === "wlr_reporting_agent");
 
 /** Default when opening an existing thread from history (most sessions are reporting). */
 export const DEFAULT_AGENT_ID: AgentId = "wlr_reporting_agent";

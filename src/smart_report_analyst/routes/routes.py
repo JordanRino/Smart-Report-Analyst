@@ -57,10 +57,6 @@ _copilot_sdk = CopilotKitRemoteEndpointAguiAgentsMap(
             description="WLR reporting specialist: SBA loan analytics via knowledge base and SQL execution.",
         ),
         StrandsCopilotAgent(
-            name="loan_report_analyst_agent",
-            description="(Legacy) Same capability as WLR Reporting Agent — SBA loan SQL and reports.",
-        ),
-        StrandsCopilotAgent(
             name="sra_orchestrator_agent",
             description=(
                 "Session orchestrator: routes to your selected main specialist (see properties.mainAgentId) "
@@ -378,7 +374,7 @@ async def set_session_specialist(thread_id: str, request: Request) -> JSONRespon
         raise HTTPException(
             status_code=422,
             detail=f"Unknown specialist agent id: {mid!r}. "
-            "Must be one of: wlr_reporting_agent, loan_report_analyst_agent.",
+            "Must be: wlr_reporting_agent.",
         )
 
     set_main_agent_id(thread_id.strip(), mid)

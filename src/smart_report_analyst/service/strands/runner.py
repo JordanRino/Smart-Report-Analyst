@@ -33,8 +33,6 @@ _STREAM_END = object()
 # CopilotKit-registered agent names
 AGENT_ROUTER = "sra_router_agent"
 AGENT_WLR_REPORTING = "wlr_reporting_agent"
-# Legacy name (same specialist as WLR)
-AGENT_LOAN_REPORT_ANALYST = "loan_report_analyst_agent"
 
 
 def _summarize_stream_event_for_log(event: Any) -> str:
@@ -141,7 +139,7 @@ async def run_stream(
     session_id: str,
     *,
     run_id: str = "",
-    agent_name: str = "loan_analyst_agent",
+    agent_name: str = "wlr_reporting_agent",
     main_agent_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """
@@ -213,9 +211,9 @@ async def run_stream(
             yield {
                 "type": "chunk",
                 "data": (
-                    "Before I can coordinate your session, choose a **main agent** "
-                    "in the bar (**WLR Reporting** or **Loan analyst**). "
-                    "That selects which analyst runs SQL and the knowledge base for this thread."
+                    "Before I can coordinate your session, please choose your **team specialist** "
+                    "in the bar (**WLR Reporting**). That selects which analyst runs SQL and the "
+                    "knowledge base for this thread."
                 ),
             }
             yield {"type": "tool_result", "data": {}}
@@ -227,7 +225,7 @@ async def run_stream(
             orchestrator_session_manager=sm,
             orchestrator_conversation_manager=cm,
         )
-    elif agent_name in (AGENT_WLR_REPORTING, AGENT_LOAN_REPORT_ANALYST):
+    elif agent_name == AGENT_WLR_REPORTING:
         agent = create_strands_agent(
             turn_state,
             session_manager=sm,

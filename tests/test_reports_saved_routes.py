@@ -78,13 +78,13 @@ def test_saved_create_persists_main_agent_id(reports_client: TestClient):
             "row_count": 1,
             "thread_id": "thread-orch",
             "agent_id": "sra_orchestrator_agent",
-            "main_agent_id": "loan_report_analyst_agent",
+            "main_agent_id": "wlr_reporting_agent",
         },
     )
     assert res.status_code == 201
-    assert res.json().get("main_agent_id") == "loan_report_analyst_agent"
+    assert res.json().get("main_agent_id") == "wlr_reporting_agent"
     lst = reports_client.get("/api/reports/saved").json()
-    assert lst["items"][0]["main_agent_id"] == "loan_report_analyst_agent"
+    assert lst["items"][0]["main_agent_id"] == "wlr_reporting_agent"
 
 
 def test_saved_list_never_includes_results_array(reports_client: TestClient):

@@ -215,7 +215,7 @@ During a turn, the server surfaces **live** tool/model trace in **one** open AG-
 1. **AG-UI over raw Copilot NDJSON** — The stream matches `@ag-ui/core` event shapes so the React client can parse and verify the run incrementally.  
 2. **Synthetic frontend `execute_sql`** — The model runs SQL on the server; the adapter re-emits a frontend `execute_sql` action with query + results so CopilotKit can render the report strip and call PDF/feedback APIs without exposing raw Strands internals to the UI.  
 3. **Thread = Strands session** — CopilotKit `threadId` aligns with on-disk session folders for history and continuity.  
-4. **CopilotKit compatibility patch** — Runtime `info` exposes agents as a name-keyed map so the UI resolves `loan_report_analyst_agent` correctly.
+4. **CopilotKit compatibility patch** — Runtime `info` exposes agents as a name-keyed map so the UI resolves named agents (e.g. `wlr_reporting_agent`) correctly.
 
 ---
 

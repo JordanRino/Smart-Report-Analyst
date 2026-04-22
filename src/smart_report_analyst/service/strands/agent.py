@@ -168,7 +168,7 @@ class StrandsCopilotAgent(Agent):
     def __init__(
         self,
         *,
-        name: str = "loan_analyst_agent",
+        name: str = "wlr_reporting_agent",
         description: str | None = None,
     ) -> None:
         super().__init__(
@@ -318,8 +318,6 @@ class StrandsCopilotAgent(Agent):
 
         sql_emit_agent_names = {
             "wlr_reporting_agent",
-            "loan_report_analyst_agent",
-            "loan_analyst_agent",
             AGENT_ORCHESTRATOR,
         }
         if self.name in sql_emit_agent_names:

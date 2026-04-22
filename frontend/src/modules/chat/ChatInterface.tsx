@@ -21,7 +21,6 @@ import {
   CHAT_ATTACHMENTS_ACCEPT,
   CHAT_ATTACHMENTS_MAX_BYTES,
 } from "@/lib/chatAttachments";
-import { getAgentLabel, MAIN_SPECIALIST_OPTIONS } from "@/lib/agents";
 
 /**
  * Match ``@copilotkit/react-ui`` default ``RenderMessage`` routing so user/assistant
@@ -122,17 +121,13 @@ export function ChatInterface() {
   );
 
   const copilotLabels = useMemo(() => {
-    const specialistHint =
-      orchestratorMainAgentId == null
-        ? null
-        : (MAIN_SPECIALIST_OPTIONS.find((o) => o.id === orchestratorMainAgentId)?.shortLabel ??
-          getAgentLabel(orchestratorMainAgentId));
-    const base = specialistHint
-      ? `You are in **Session** mode. SQL and the knowledge base run through **${specialistHint}** (change in the bar). The session can also use **report_builder** for narrative deliverables once facts are settled.`
-      : `Choose a **main agent** in the bar before asking for database or SQL work.`;
+    const initial = orchestratorMainAgentId
+      ? "I'm the WLR Reporting Agent—how can I assist you today?"
+      : "Please choose your team's specialist in the bar above";
+
     return {
       title: "Smart Report Analyst",
-      initial: base,
+      initial,
     };
   }, [orchestratorMainAgentId]);
 

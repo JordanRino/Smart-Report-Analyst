@@ -3,7 +3,7 @@
 The SDK's ``info()`` returns ``agents`` as a list of ``{name, description}`` dicts.
 ``@copilotkitnext/core`` treats ``agents`` as a record and does
 ``Object.entries(agents)``, which for an array yields keys ``"0"``, ``"1"``, …
-so the UI looks up ``loan_report_analyst_agent`` but the runtime only registers ``"0"``.
+so the UI looks up a named agent (e.g. ``wlr_reporting_agent``) but the runtime only registers ``"0"``.
 """
 
 from __future__ import annotations
