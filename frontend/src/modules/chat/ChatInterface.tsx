@@ -123,7 +123,7 @@ export function ChatInterface() {
   const copilotLabels = useMemo(() => {
     const initial = orchestratorMainAgentId
       ? "I'm the WLR Reporting Agent—how can I assist you today?"
-      : "Please choose your team's specialist in the bar above";
+      : "Please choose your team's agent in the bar above";
 
     return {
       title: "Smart Report Analyst",
