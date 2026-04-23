@@ -9,6 +9,9 @@ from strands import Agent
 
 from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.bedrock.model_manager import build_bedrock_model
+from smart_report_analyst.service.strands.agents.metadata_updater_prompt import (
+    METADATA_UPDATER_INSTRUCTIONS,
+)
 from smart_report_analyst.service.strands.agents.prompts import (
     ORCHESTRATOR_INSTRUCTIONS,
     REPORT_BUILDER_INSTRUCTIONS,
@@ -27,8 +30,9 @@ from smart_report_analyst.service.strands.session.scoped import composite_sessio
 from smart_report_analyst.service.strands.conversation import build_strands_conversation_manager
 from smart_report_analyst.service.strands.tools import (
     StrandsTurnState,
-    build_strands_tools,
+    build_metadata_tools,
     build_report_builder_tools,
+    build_strands_tools,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,13 +67,6 @@ def create_specialist_agent(
         if system_prompt is not None
         else _specialist_system_prompt(agent_id)
     )
-    tid = (turn_state.thread_id or "").strip()
-    if tid:
-        sp = (
-            f"{sp}\n\n---\nSession context\n"
-            f"- Copilot **thread_id** (use this exact value in the `session_metadata.thread_id` column "
-            f"when persisting upload-derived metadata): `{tid}`\n"
-        )
     meta = resolve_main_specialist(agent_id)
     kwargs: dict[str, Any] = {
         "model": model,
@@ -110,6 +107,43 @@ def create_report_builder_agent(
     return Agent(**kwargs)
 
 
+def create_metadata_updater_agent(
+    turn_state: StrandsTurnState,
+    session_manager: Any | None = None,
+    conversation_manager: Any | None = None,
+) -> Agent:
+    """
+    Session metadata writer: app MySQL via ``execute_metadata_sql`` only.
+    Invoked as a tool by the orchestrator (not a Copilot-pickable team agent).
+    """
+    model = build_bedrock_model()
+    tools = build_metadata_tools(turn_state)
+    sp = METADATA_UPDATER_INSTRUCTIONS.strip()
+    tid = (turn_state.thread_id or "").strip()
+    if tid:
+        sp = (
+            f"{sp}\n\n---\nSession context\n"
+            f"- Copilot **thread_id** (use verbatim in SQL for ``thread_id`` / scope): `{tid}`\n"
+        )
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "tools": tools,
+        "system_prompt": sp,
+        "callback_handler": None,
+        "name": "metadata_updater",
+        "description": (
+            "Creates or updates session-scoped metadata in app MySQL from uploads and user choices. "
+            "Pass thread_id, chosen team agent, create-vs-update mode, and the user's goal."
+        ),
+    }
+    if session_manager is not None:
+        kwargs["session_manager"] = session_manager
+        kwargs["messages"] = None
+    if conversation_manager is not None:
+        kwargs["conversation_manager"] = conversation_manager
+    return Agent(**kwargs)
+
+
 def create_orchestrator_agent(
     turn_state: StrandsTurnState,
     *,
@@ -119,7 +153,7 @@ def create_orchestrator_agent(
     orchestrator_conversation_manager: Any | None,
 ) -> Agent:
     """
-    Orchestrator with ``main_specialist`` + ``report_builder`` tools.
+    Orchestrator with ``main_specialist``, ``report_builder``, and ``metadata_updater`` tools.
 
     ``turn_state`` is shared with the specialist so ``execute_sql`` results surface on the
     outer Copilot run for AG-UI. The specialist uses ``preserve_context=True`` as_tool when
@@ -148,6 +182,15 @@ def create_orchestrator_agent(
         conversation_manager=builder_cm,
     )
 
+    metadata_sid = composite_session_id(tid, f"{AGENT_ORCHESTRATOR}_metadata_updater")
+    metadata_sm = build_strands_session_manager(metadata_sid)
+    metadata_cm = build_strands_conversation_manager()
+    metadata_agent = create_metadata_updater_agent(
+        turn_state,
+        session_manager=metadata_sm,
+        conversation_manager=metadata_cm,
+    )
+
     meta = resolve_main_specialist(main_agent_id)
     main_tool = specialist.as_tool(
         name="main_specialist",
@@ -166,17 +209,29 @@ def create_orchestrator_agent(
         ),
         preserve_context=True,
     )
+    metadata_tool = metadata_agent.as_tool(
+        name="metadata_updater",
+        description=(
+            "Creates or updates session metadata in app MySQL (upload-derived glossary). "
+            "Pass thread_id, which team's metadata (e.g. WLR), create-new vs update-existing, "
+            "user goal, and file summary. Not shown in the team agent picker."
+        ),
+        preserve_context=True,
+    )
 
     report_tools = build_report_builder_tools(turn_state)
 
     model = build_bedrock_model()
     orch_kwargs: dict[str, Any] = {
         "model": model,
-        "tools": [main_tool, builder_tool] + report_tools,
+        "tools": [main_tool, builder_tool, metadata_tool] + report_tools,
         "system_prompt": ORCHESTRATOR_INSTRUCTIONS.strip(),
         "callback_handler": None,
         "name": AGENT_ORCHESTRATOR,
-        "description": "Orchestrates reporting: routes to the selected data specialist and optional report builder.",
+        "description": (
+            "Orchestrates reporting: routes to the selected data specialist, report builder, "
+            "and metadata updater (session MySQL)."
+        ),
     }
     if orchestrator_session_manager is not None:
         orch_kwargs["session_manager"] = orchestrator_session_manager

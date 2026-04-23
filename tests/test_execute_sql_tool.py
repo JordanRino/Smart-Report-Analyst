@@ -6,7 +6,11 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from smart_report_analyst.config.settings import Settings
-from smart_report_analyst.service.strands.tools import StrandsTurnState, build_strands_tools
+from smart_report_analyst.service.strands.tools import (
+    StrandsTurnState,
+    build_metadata_tools,
+    build_strands_tools,
+)
 
 
 def _minimal_settings(**kwargs) -> Settings:
@@ -85,10 +89,9 @@ def test_execute_sql_sets_turn_state_on_error(
     asyncio.run(_run())
 
 
-@patch("smart_report_analyst.service.strands.tools.tools.KnowledgeBaseRetriever")
 @patch("smart_report_analyst.service.strands.tools.tools.get_settings")
 @patch("smart_report_analyst.service.strands.tools.tools.app_data_layer")
-def test_execute_metadata_sql_calls_layer(mock_adl, mock_get_settings, _mock_kb) -> None:
+def test_execute_metadata_sql_calls_layer(mock_adl, mock_get_settings) -> None:
     mock_get_settings.return_value = _minimal_settings()
     body = {
         "refined_user_question": "Load glossary",
@@ -100,8 +103,10 @@ def test_execute_metadata_sql_calls_layer(mock_adl, mock_get_settings, _mock_kb)
     mock_adl.execute_metadata_sql = AsyncMock(return_value=body)
 
     state = StrandsTurnState()
-    tools = build_strands_tools(state)
-    meta_sql = next(t for t in tools if getattr(t, "tool_name", None) == "execute_metadata_sql")
+    tools = build_metadata_tools(state)
+    assert len(tools) == 1
+    meta_sql = tools[0]
+    assert getattr(meta_sql, "tool_name", None) == "execute_metadata_sql"
 
     async def _run() -> None:
         result = await meta_sql(
@@ -118,6 +123,16 @@ def test_execute_metadata_sql_calls_layer(mock_adl, mock_get_settings, _mock_kb)
         assert state.last_metadata_tool_result == body
 
     asyncio.run(_run())
+
+
+@patch("smart_report_analyst.service.strands.tools.tools.KnowledgeBaseRetriever")
+@patch("smart_report_analyst.service.strands.tools.tools.get_settings")
+def test_strands_tools_excludes_metadata_sql(mock_get_settings, _mock_kb) -> None:
+    mock_get_settings.return_value = _minimal_settings()
+    tools = build_strands_tools(StrandsTurnState())
+    names = {getattr(t, "tool_name", None) for t in tools}
+    assert "execute_metadata_sql" not in names
+    assert "execute_sql" in names
 
 
 @patch("smart_report_analyst.service.strands.tools.tools.KnowledgeBaseRetriever")

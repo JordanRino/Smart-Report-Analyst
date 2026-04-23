@@ -59,8 +59,8 @@ _copilot_sdk = CopilotKitRemoteEndpointAguiAgentsMap(
         StrandsCopilotAgent(
             name="sra_orchestrator_agent",
             description=(
-                "Session orchestrator: routes to your selected main specialist (see properties.mainAgentId) "
-                "plus a text-only report builder."
+                "Session orchestrator: routes to your selected main specialist (see properties.mainAgentId), "
+                "report builder, and metadata updater (session MySQL; not a pickable team agent)."
             ),
         ),
     ],

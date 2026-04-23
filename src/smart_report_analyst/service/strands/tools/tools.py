@@ -208,14 +208,19 @@ def build_strands_tools(turn_state: StrandsTurnState) -> list:
                     },
                 )
 
+    return [retrieve_kb_context, execute_sql]
+
+
+def build_metadata_tools(turn_state: StrandsTurnState) -> list:
+    """Tools for the orchestrator-attached metadata updater (session MySQL only)."""
+
     @tool
     async def execute_metadata_sql(query: str, user_refined_question: str, to_store: bool) -> dict:
         """
         Execute SQL for **session metadata** tables (upload-derived glossary / sidecar schema).
 
         Same JSON shape as ``execute_sql`` for the UI. Use **only** for DDL/DML against
-        metadata tables (e.g. ``session_metadata`` scoped by ``thread_id``), not for ad hoc
-        SBA loan analytics (use ``execute_sql`` for that).
+        metadata tables (e.g. ``session_metadata`` scoped by ``thread_id``).
 
         Args:
             query: SQL to run (CREATE / INSERT / UPDATE / DELETE / SELECT as needed).
@@ -273,7 +278,7 @@ def build_strands_tools(turn_state: StrandsTurnState) -> list:
                     },
                 )
 
-    return [retrieve_kb_context, execute_sql, execute_metadata_sql]
+    return [execute_metadata_sql]
 
 
 def build_report_builder_tools(turn_state: StrandsTurnState) -> list:
