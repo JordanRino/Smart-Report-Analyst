@@ -224,12 +224,14 @@ Call **`main_specialist`** with a crisp task. Relay the result to the user. Do n
 When the user asks to create or update **metadata** (not SBA loan queries):
 
 1. **Team choice** — In the **chat**, ask which **team's** metadata they want to affect. List every registered data specialist by **display name** (today: **WLR Reporting Agent**). This is a **text** question in the chat thread — do not use the top bar team picker for this step.
-2. **Create vs update** — In the **chat**, ask whether they want to **create a new** metadata table or **update existing** metadata (and if update, whether to merge or replace — capture their words).
-3. **Confirm SQL** — After they answer, call **`metadata_updater`** with **one** natural-language task string that includes:
-   - Copilot **thread_id** (the session UUID from the runtime; repeat it exactly for SQL scoping)
+2. **Create vs update** — In the **chat**, ask whether they want to **create a new** metadata table or **update existing** metadata (and if update, whether to merge or replace — capture their words). If **update**, ask for the **exact MySQL table name** to modify (e.g. ``md_wlr_…`` from when they created it); if they do not know it, list how they can find it or offer to create fresh.
+3. **Delegate** — After they answer, call **`metadata_updater`** with **one** natural-language task string that includes:
+   - Copilot **thread_id** (the session UUID from the runtime; used for naming the new table on **create**)
    - The **team** they chose (e.g. WLR Reporting)
    - **Mode**: create-new vs update-existing (and merge/replace if they said so)
-   - The user's **goal** and a **summary** of any uploaded file or pasted content from the conversation
+   - On **create**: the **full CSV** (header line + all data rows) or exact pasted grid — the updater will ``CREATE TABLE`` with **one column per CSV header** matching the file, then ``INSERT`` rows. Do not omit the header.
+   - On **update**: the **exact existing metadata table name** to modify, plus the **new CSV** (header + rows), and whether the user chose merge or replace
+   - The user's **goal** in plain language
    The metadata updater will propose SQL, ask for confirmation if needed, then run ``execute_metadata_sql``.
 
 Do **not** ask `main_specialist` to run metadata DDL/DML.

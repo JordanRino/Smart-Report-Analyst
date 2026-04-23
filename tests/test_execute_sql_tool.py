@@ -95,7 +95,7 @@ def test_execute_metadata_sql_calls_layer(mock_adl, mock_get_settings) -> None:
     mock_get_settings.return_value = _minimal_settings()
     body = {
         "refined_user_question": "Load glossary",
-        "executed_sql": "INSERT INTO session_metadata …",
+        "executed_sql": "INSERT INTO md_wlr_test …",
         "results": [],
         "row_count": 0,
         "to_store": False,
@@ -110,12 +110,12 @@ def test_execute_metadata_sql_calls_layer(mock_adl, mock_get_settings) -> None:
 
     async def _run() -> None:
         result = await meta_sql(
-            query="INSERT INTO session_metadata (thread_id) VALUES ('x')",
+            query="INSERT INTO md_wlr_test (col_a) VALUES ('x')",
             user_refined_question="Load glossary",
             to_store=False,
         )
         mock_adl.execute_metadata_sql.assert_awaited_once_with(
-            "INSERT INTO session_metadata (thread_id) VALUES ('x')",
+            "INSERT INTO md_wlr_test (col_a) VALUES ('x')",
             "Load glossary",
             False,
         )

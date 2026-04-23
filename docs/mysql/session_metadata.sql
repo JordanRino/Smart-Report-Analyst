@@ -1,16 +1,18 @@
--- Session-scoped metadata sidecar (per Copilot thread_id). Run once per MySQL database.
--- The WLR agent can CREATE/INSERT/UPDATE via the execute_metadata_sql tool.
+-- Metadata tables are created dynamically by the metadata updater from each CSV:
+-- CREATE TABLE `md_<team>_<threadid>` ( <one column per CSV header>, ... ) + INSERT rows.
+-- There is no fixed global `session_metadata` schema required for the CSV-mirror flow.
+--
+-- Example only (replace header names and types with your file):
 
-CREATE TABLE IF NOT EXISTS session_metadata (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  thread_id CHAR(36) NOT NULL,
-  source_label VARCHAR(512) NULL,
-  entity_key VARCHAR(512) NOT NULL,
-  attr_key VARCHAR(512) NOT NULL,
-  attr_value TEXT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  KEY idx_session_metadata_thread (thread_id),
-  KEY idx_session_metadata_thread_entity (thread_id, entity_key(128))
+/*
+CREATE TABLE `md_wlr_examplethreadid` (
+  `column_from_csv_1` VARCHAR(512) NULL,
+  `column_from_csv_2` TEXT NULL,
+  `amount` DECIMAL(20,4) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `md_wlr_examplethreadid` (`column_from_csv_1`, `column_from_csv_2`, `amount`)
+VALUES
+  ('row1col1', 'row1col2', 123.45),
+  ('row2col1', 'row2col2', 678.00);
+*/
