@@ -63,6 +63,13 @@ def create_specialist_agent(
         if system_prompt is not None
         else _specialist_system_prompt(agent_id)
     )
+    tid = (turn_state.thread_id or "").strip()
+    if tid:
+        sp = (
+            f"{sp}\n\n---\nSession context\n"
+            f"- Copilot **thread_id** (use this exact value in the `session_metadata.thread_id` column "
+            f"when persisting upload-derived metadata): `{tid}`\n"
+        )
     meta = resolve_main_specialist(agent_id)
     kwargs: dict[str, Any] = {
         "model": model,

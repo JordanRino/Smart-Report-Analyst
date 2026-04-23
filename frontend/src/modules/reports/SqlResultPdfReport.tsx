@@ -14,6 +14,8 @@ type Props = {
   results: unknown;
   refinedUserQuestion?: string;
   rowCount?: number;
+  /** ``execute_sql`` vs ``execute_metadata_sql`` card label */
+  variant?: "analysis" | "metadata";
 };
 
 /** Stable fingerprint to avoid duplicate saves across re-renders. */
@@ -60,6 +62,7 @@ export function SqlResultPdfReport({
   results,
   refinedUserQuestion,
   rowCount,
+  variant = "analysis",
 }: Props) {
   const router = useRouter();
   const { effectiveThreadId, pickedAgentId, orchestratorMainAgentId } = useApp();
@@ -75,8 +78,8 @@ export function SqlResultPdfReport({
 
   const fingerprint = resultsFingerprint(rows);
   const saveKey = useMemo(
-    () => `${query}\0${fingerprint}\0${refinedUserQuestion ?? ""}`,
-    [query, fingerprint, refinedUserQuestion],
+    () => `${variant}\0${query}\0${fingerprint}\0${refinedUserQuestion ?? ""}`,
+    [variant, query, fingerprint, refinedUserQuestion],
   );
 
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -154,9 +157,11 @@ export function SqlResultPdfReport({
     router.push("/records/explore");
   }, [router, rows, query, refinedUserQuestion, rowCount]);
 
-  const fileSlug = (refinedUserQuestion || "records")
+  const fileSlug = (refinedUserQuestion || (variant === "metadata" ? "metadata" : "records"))
     .replace(/[^a-zA-Z0-9_-]+/g, "-")
-    .slice(0, 48) || "records";
+    .slice(0, 48) || (variant === "metadata" ? "metadata" : "records");
+
+  const cardLabel = variant === "metadata" ? "Session metadata" : "Records";
 
   if (status === "inProgress") {
     return (
@@ -177,7 +182,7 @@ export function SqlResultPdfReport({
         className="fixed inset-0 z-200 flex items-center justify-center p-4"
         role="dialog"
         aria-modal="true"
-        aria-label="Records preview"
+        aria-label={`${cardLabel} preview`}
       >
         <button
           type="button"
@@ -188,7 +193,7 @@ export function SqlResultPdfReport({
         <div className="relative z-10 flex h-[min(88vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-100 bg-zinc-50 px-4 py-3">
             <span className="text-sm font-medium text-zinc-800">
-              Records preview{rows.length > 100 ? ` (first 100 of ${rows.length})` : ""}
+              {cardLabel} preview{rows.length > 100 ? ` (first 100 of ${rows.length})` : ""}
             </span>
             <div className="flex gap-2">
               <button
@@ -249,7 +254,7 @@ export function SqlResultPdfReport({
         <div className="flex flex-col gap-2 border-b border-zinc-100 bg-zinc-50 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-medium text-zinc-800">
-              Records
+              {cardLabel}
               {rows.length > 0 && (
                 <span className="ml-1.5 text-xs font-normal text-zinc-500">
                   {rows.length} row{rows.length !== 1 ? "s" : ""}

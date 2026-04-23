@@ -87,6 +87,41 @@ def test_execute_sql_sets_turn_state_on_error(
 
 @patch("smart_report_analyst.service.strands.tools.tools.KnowledgeBaseRetriever")
 @patch("smart_report_analyst.service.strands.tools.tools.get_settings")
+@patch("smart_report_analyst.service.strands.tools.tools.app_data_layer")
+def test_execute_metadata_sql_calls_layer(mock_adl, mock_get_settings, _mock_kb) -> None:
+    mock_get_settings.return_value = _minimal_settings()
+    body = {
+        "refined_user_question": "Load glossary",
+        "executed_sql": "INSERT INTO session_metadata …",
+        "results": [],
+        "row_count": 0,
+        "to_store": False,
+    }
+    mock_adl.execute_metadata_sql = AsyncMock(return_value=body)
+
+    state = StrandsTurnState()
+    tools = build_strands_tools(state)
+    meta_sql = next(t for t in tools if getattr(t, "tool_name", None) == "execute_metadata_sql")
+
+    async def _run() -> None:
+        result = await meta_sql(
+            query="INSERT INTO session_metadata (thread_id) VALUES ('x')",
+            user_refined_question="Load glossary",
+            to_store=False,
+        )
+        mock_adl.execute_metadata_sql.assert_awaited_once_with(
+            "INSERT INTO session_metadata (thread_id) VALUES ('x')",
+            "Load glossary",
+            False,
+        )
+        assert result == body
+        assert state.last_metadata_tool_result == body
+
+    asyncio.run(_run())
+
+
+@patch("smart_report_analyst.service.strands.tools.tools.KnowledgeBaseRetriever")
+@patch("smart_report_analyst.service.strands.tools.tools.get_settings")
 def test_retrieve_kb_context_delegates(mock_get_settings, mock_kb_class) -> None:
     mock_get_settings.return_value = _minimal_settings()
     mock_kb = MagicMock()

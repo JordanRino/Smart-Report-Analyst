@@ -212,6 +212,63 @@ export function ChatInterface() {
     },
   });
 
+  useCopilotAction({
+    name: "execute_metadata_sql",
+    available: "frontend",
+    description: "Executes session metadata SQL (upload-derived glossary; app MySQL)",
+    parameters: [
+      { name: "query", type: "string", description: "The SQL query being executed" },
+      { name: "results", type: "object", description: "The JSON results from the database" },
+      {
+        name: "refined_user_question",
+        type: "string",
+        description: "Short title for the metadata operation",
+      },
+      {
+        name: "row_count",
+        type: "number",
+        description: "Number of rows returned",
+      },
+      {
+        name: "to_store",
+        type: "boolean",
+        description: "Whether this question/SQL pair is eligible for examples storage",
+      },
+    ],
+    render: ({
+      status,
+      args,
+    }: ActionRenderProps<
+      [
+        { name: "query"; type: "string"; description: string },
+        { name: "results"; type: "object"; description: string },
+        { name: "refined_user_question"; type: "string"; description: string },
+        { name: "row_count"; type: "number"; description: string },
+        { name: "to_store"; type: "boolean"; description: string },
+      ]
+    >): React.ReactElement => {
+      const results = Array.isArray(args.results) ? (args.results as unknown[]) : [];
+      const rq =
+        typeof args.refined_user_question === "string"
+          ? args.refined_user_question
+          : undefined;
+      const rc =
+        typeof args.row_count === "number" && !Number.isNaN(args.row_count)
+          ? args.row_count
+          : undefined;
+      return (
+        <SqlResultPdfReport
+          variant="metadata"
+          status={status}
+          query={typeof args.query === "string" ? args.query : ""}
+          results={results}
+          refinedUserQuestion={rq}
+          rowCount={rc}
+        />
+      );
+    },
+  });
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <AgentPicker />

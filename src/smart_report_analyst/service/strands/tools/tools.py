@@ -39,6 +39,7 @@ class StrandsTurnState:
     """Per-turn mutable state shared across orchestrator and sub-agents."""
 
     last_tool_result: dict = field(default_factory=dict)
+    last_metadata_tool_result: dict = field(default_factory=dict)
     # Set by generate_report_pdf (report_id, title, …); agent.py emits deliver_report AG-UI when report_id is set.
     last_report_result: dict = field(default_factory=dict)
     # Copilot thread_id injected by runner so tools can use it without model passing it.
@@ -207,7 +208,72 @@ def build_strands_tools(turn_state: StrandsTurnState) -> list:
                     },
                 )
 
-    return [retrieve_kb_context, execute_sql]
+    @tool
+    async def execute_metadata_sql(query: str, user_refined_question: str, to_store: bool) -> dict:
+        """
+        Execute SQL for **session metadata** tables (upload-derived glossary / sidecar schema).
+
+        Same JSON shape as ``execute_sql`` for the UI. Use **only** for DDL/DML against
+        metadata tables (e.g. ``session_metadata`` scoped by ``thread_id``), not for ad hoc
+        SBA loan analytics (use ``execute_sql`` for that).
+
+        Args:
+            query: SQL to run (CREATE / INSERT / UPDATE / DELETE / SELECT as needed).
+            user_refined_question: Short description of what this metadata change does.
+            to_store: Same flag as ``execute_sql`` (typically false for metadata DDL).
+        """
+        t0 = _now_ms()
+        step_name = turn_state.next_tool_step_name("execute_metadata_sql")
+        await turn_state.emit_trace_async(
+            TraceKind.STEP_STARTED, {"step_name": step_name}
+        )
+        await turn_state.emit_trace_async(
+            TraceKind.REASONING_LINE,
+            {"text": f"Running metadata SQL ({_truncate_sql(query)})\n"},
+        )
+        try:
+            body = await app_data_layer.execute_metadata_sql(
+                query, user_refined_question, to_store
+            )
+            turn_state.last_metadata_tool_result = body
+            rc = body.get("row_count", 0)
+            await turn_state.emit_trace_async(
+                TraceKind.REASONING_LINE,
+                {"text": f"Metadata SQL finished: {rc} row(s) returned.\n"},
+            )
+            return body
+        except Exception as e:
+            logger.exception("execute_metadata_sql failed")
+            err = {
+                "error": True,
+                "message": str(e),
+                "refined_user_question": user_refined_question,
+                "executed_sql": query,
+                "results": [],
+                "row_count": 0,
+                "to_store": False,
+            }
+            turn_state.last_metadata_tool_result = err
+            await turn_state.emit_trace_async(
+                TraceKind.REASONING_LINE,
+                {"text": f"Metadata SQL error: {str(e)[:200]}\n"},
+            )
+            return err
+        finally:
+            await turn_state.emit_trace_async(
+                TraceKind.STEP_FINISHED, {"step_name": step_name}
+            )
+            dt = _now_ms() - t0
+            if dt >= 0:
+                await turn_state.emit_trace_async(
+                    TraceKind.CUSTOM,
+                    {
+                        "name": "tool_timing_ms",
+                        "value": {"tool": "execute_metadata_sql", "duration_ms": dt},
+                    },
+                )
+
+    return [retrieve_kb_context, execute_sql, execute_metadata_sql]
 
 
 def build_report_builder_tools(turn_state: StrandsTurnState) -> list:

@@ -38,18 +38,10 @@ class AppDataLayer:
             self.pool.close()
             await self.pool.wait_closed()
 
-    async def execute_generated_query(self, query: str, user_refined_question: str, to_store: bool) -> Dict[str, Any]:
-        """
-        Execute SQL query on sba_loans table and optionally store in successful_queries.
-
-        Args:
-            query: The SQL query to execute.
-            user_refined_question: Refined user question.
-            to_store: Whether to store the query in successful_queries.
-
-        Returns:
-            Dict with results, similar to Lambda response.
-        """
+    async def _execute_client_sql(
+        self, query: str, user_refined_question: str, to_store: bool
+    ) -> Dict[str, Any]:
+        """Run a single client-issued SQL string; shared by analytics and metadata paths."""
         await self.init_pool()
         try:
             async with self.pool.acquire() as conn:
@@ -78,6 +70,32 @@ class AppDataLayer:
                 "row_count": 0,
                 "to_store": False,
             }
+
+    async def execute_generated_query(self, query: str, user_refined_question: str, to_store: bool) -> Dict[str, Any]:
+        """
+        Execute SQL query on sba_loans table and optionally store in successful_queries.
+
+        Args:
+            query: The SQL query to execute.
+            user_refined_question: Refined user question.
+            to_store: Whether to store the query in successful_queries.
+
+        Returns:
+            Dict with results, similar to Lambda response.
+        """
+        return await self._execute_client_sql(query, user_refined_question, to_store)
+
+    async def execute_metadata_sql(
+        self, query: str, user_refined_question: str, to_store: bool
+    ) -> Dict[str, Any]:
+        """
+        Execute SQL for session-scoped metadata (demo / sidecar tables).
+
+        Same result shape as ``execute_generated_query`` today; kept separate so we can
+        add allowlists, statement checks, and different credentials later without touching
+        the analytics path.
+        """
+        return await self._execute_client_sql(query, user_refined_question, to_store)
 
     async def store_successful_query(self, refined_user_question: str, executed_sql: str):
         """Store successful query in successful_queries table."""

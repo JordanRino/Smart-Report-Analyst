@@ -49,6 +49,7 @@ from smart_report_analyst.service.strands.session.reader import (
 logger = logging.getLogger(__name__)
 
 ACTION_EXECUTE_SQL = "execute_sql"
+ACTION_EXECUTE_METADATA_SQL = "execute_metadata_sql"
 
 
 def _ts_ms() -> int:
@@ -97,6 +98,50 @@ def _yield_execute_sql_tool_events(
     yield agui_tool_call_start(
         tool_call_id=tool_call_id,
         tool_call_name=ACTION_EXECUTE_SQL,
+        parent_message_id=parent_message_id,
+        timestamp=t,
+    )
+    yield agui_tool_call_args(tool_call_id=tool_call_id, delta=args_json, timestamp=t)
+    yield agui_tool_call_end(tool_call_id=tool_call_id, timestamp=t)
+    yield agui_tool_call_result(
+        message_id=result_message_id,
+        tool_call_id=tool_call_id,
+        content=args_json,
+        timestamp=t,
+    )
+
+
+def _yield_execute_metadata_sql_tool_events(
+    *,
+    thread_id: str,
+    metadata_tool_result: dict[str, Any],
+    parent_message_id: str,
+) -> Iterator[str]:
+    """AG-UI frames for ``execute_metadata_sql`` (same payload shape as ``execute_sql``)."""
+    if not metadata_tool_result or metadata_tool_result.get("error"):
+        return
+    executed = metadata_tool_result.get("executed_sql")
+    results = metadata_tool_result.get("results")
+    if executed is None or results is None:
+        return
+    if not isinstance(results, list):
+        results = list(results)
+
+    tool_call_id = str(uuid.uuid4())
+    result_message_id = str(uuid.uuid4())
+    args_obj = {
+        "query": str(executed),
+        "results": results,
+        "refined_user_question": metadata_tool_result.get("refined_user_question"),
+        "row_count": metadata_tool_result.get("row_count"),
+        "to_store": metadata_tool_result.get("to_store"),
+    }
+    args_json = json.dumps(args_obj, default=str)
+
+    t = _ts_ms()
+    yield agui_tool_call_start(
+        tool_call_id=tool_call_id,
+        tool_call_name=ACTION_EXECUTE_METADATA_SQL,
         parent_message_id=parent_message_id,
         timestamp=t,
     )
@@ -327,6 +372,13 @@ class StrandsCopilotAgent(Agent):
                 parent_message_id=message_id,
             ):
                 yield frame
+            if run_state and run_state.last_metadata_tool_result:
+                for frame in _yield_execute_metadata_sql_tool_events(
+                    thread_id=thread_id,
+                    metadata_tool_result=run_state.last_metadata_tool_result,
+                    parent_message_id=message_id,
+                ):
+                    yield frame
 
         # Emit deliver_report action if generate_report_pdf saved a permanent report.
         report_result = run_state.last_report_result if run_state else {}
