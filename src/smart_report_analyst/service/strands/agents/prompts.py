@@ -224,13 +224,14 @@ Call **`main_specialist`** with a crisp task. Relay the result to the user. Do n
 When the user asks to create or update **metadata** (not SBA loan queries):
 
 1. **Team choice** — In the **chat**, ask which **team's** metadata they want to affect. List every registered data specialist by **display name** (today: **WLR Reporting Agent**). This is a **text** question in the chat thread — do not use the top bar team picker for this step.
-2. **Create vs update** — In the **chat**, ask whether they want to **create a new** metadata table or **update existing** metadata (and if update, whether to merge or replace — capture their words). If **update**, ask for the **exact MySQL table name** to modify (e.g. ``md_wlr_…`` from when they created it); if they do not know it, list how they can find it or offer to create fresh.
-3. **Delegate** — After they answer, call **`metadata_updater`** with **one** natural-language task string that includes:
-   - Copilot **thread_id** (the session UUID from the runtime; used for naming the new table on **create**)
+2. **Create vs update** — In the **chat**, ask whether they want to **create a new** metadata table or **update existing** metadata (and if update, whether to merge or replace — capture their words). If **update**, ask for the **exact MySQL table name** to modify; if they do not know it, explain they need the name they used at create time or offer to create a new table instead.
+3. **Table name (create only)** — If they chose **create new**, ask in the **chat** what **MySQL table name** they want (their choice — **do not** invent or auto-generate a name). Before proceeding, check it is valid: **1–64 characters**; only **letters, digits, and underscores** (recommend starting with a letter or ``_``); **not** an empty string; avoid **MySQL reserved words** (e.g. ``select``, ``order``, ``group``, ``table``, ``where``). If invalid, **tell them clearly what is wrong** and ask again until you have an acceptable name.
+4. **Delegate** — After the above, call **`metadata_updater`** with **one** natural-language task string that includes:
+   - Copilot **thread_id** (session UUID, for context)
    - The **team** they chose (e.g. WLR Reporting)
-   - **Mode**: create-new vs update-existing (and merge/replace if they said so)
-   - On **create**: the **full CSV** (header line + all data rows) or exact pasted grid — the updater will ``CREATE TABLE`` with **one column per CSV header** matching the file, then ``INSERT`` rows. Do not omit the header.
-   - On **update**: the **exact existing metadata table name** to modify, plus the **new CSV** (header + rows), and whether the user chose merge or replace
+   - **Mode**: create-new vs update-existing (and merge/replace if update)
+   - On **create**: the **exact chosen table name** (must match what the user approved after validation) + the **full CSV** (header line + all data rows). Do not omit the header.
+   - On **update**: the **exact existing metadata table name** + the **new CSV** (header + rows), and merge or replace
    - The user's **goal** in plain language
    The metadata updater will propose SQL, ask for confirmation if needed, then run ``execute_metadata_sql``.
 
@@ -257,7 +258,7 @@ Do **not** ask `main_specialist` to run metadata DDL/DML.
 - Never call `report_builder` or `generate_report_pdf` without user confirmation of the brief.
 - Never fabricate data; always ground reports in `main_specialist` output.
 - When the user attaches a reference document, pass explicit format instructions to `report_builder` instructing it to mirror that document's structure.
-- For metadata work: never skip the **in-chat** team + create/update questions before calling `metadata_updater`.
+- For metadata work: never skip the **in-chat** team + create/update questions before calling `metadata_updater`. On **create**, never skip **user-chosen table name** + validation feedback in chat before delegating.
 """
 
 
