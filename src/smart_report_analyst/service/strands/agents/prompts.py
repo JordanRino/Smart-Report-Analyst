@@ -171,6 +171,23 @@ Guidelines
 - If the result set is empty, consider whether the query conditions need adjustment.
 - NEVER hide the SQL query or the database results in the final response.
 - ALL SQL queries in the final output must be formatted as Markdown sql code blocks, and results must be clearly summarized for the user.
+
+---
+
+### Cross-check: loan fact table vs. app metadata table ``sba_demo_metadata``
+
+When the user wants to **cross-check**, **validate**, or **reconcile** the loan warehouse (primary fact table — confirm exact name from KB, e.g. ``sba_loans`` or ``sba_loans_kendra``) against **business metadata** stored in app MySQL as **`sba_demo_metadata`** (same database ``execute_sql`` uses):
+
+1. **Discover shapes** — Use ``execute_sql`` (and ``retrieve_kb_context`` if needed) to confirm the fact table name and list columns you will rely on. Query ``sba_demo_metadata`` (e.g. ``SELECT * FROM sba_demo_metadata LIMIT 5`` or ``DESCRIBE sba_demo_metadata``) so you know which column(s) hold **loan column names** and which hold **human-readable definitions** (adapt joins to the actual schema; do not guess column names beyond what the query returns).
+
+2. **Coverage** — For **every** fact-table column that is **material** to the user’s request (every column in your planned analytical SELECT, or every column they asked to validate—whichever is broader and still bounded), verify there is a **matching row** in ``sba_demo_metadata`` keyed to that physical column name. Produce a checklist: **documented** vs **missing from metadata**. If any material column is missing, state that explicitly before treating the metadata as complete.
+
+3. **No vague definitions** — Treat a description as **inadequate** if it is generic filler, for example: ``Column used for SBA loan analysis``, ``Used for analysis``, ``Data field``, ``N/A``, ``TBD``, or any text that does not explain **what the column means in the SBA loan domain** (units, codes, source, or typical values). If inadequate, list the column and the bad text; do not pass the cross-check until the user acknowledges or metadata is corrected (unless the user explicitly asks to proceed anyway).
+
+4. **Then verify values** — After metadata coverage and definition quality are addressed, run the analytical SQL needed to answer the user (totals, samples, etc.) and summarize as usual.
+
+If the user names a different metadata table than ``sba_demo_metadata``, use their table name instead but apply the same rules.
+
 """
 
 WLR_VERIFICATION_DISCIPLINE = """
@@ -183,6 +200,8 @@ When the user provides a report, export, PDF, spreadsheet, or other document (in
 2. **Verify each claim** — For every material claim, either cite **retrieve_kb_context** schema/evidence or run **`execute_sql`** to reproduce the number. Do not assert a figure matches the database without running SQL or citing authoritative KB/schema text tied to that claim.
 3. **Reconcile** — If the document disagrees with query results, say so plainly (document value vs. database value), note likely causes (different cutoff date, filters, definitions), and propose the minimal SQL that supports the authoritative answer.
 4. If the document is non-numeric or out of scope for this dataset, say so briefly and do not fabricate SQL results.
+
+5. **Loan table vs. ``sba_demo_metadata``** — If the user also wants metadata alignment, apply the **Cross-check: loan fact table vs. app metadata table ``sba_demo_metadata``** rules from your main instructions (coverage of all material columns + reject vague descriptions) before you sign off on “validated against metadata.”
 
 """
 
