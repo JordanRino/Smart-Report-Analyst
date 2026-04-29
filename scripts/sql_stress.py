@@ -4,10 +4,11 @@
 Requires MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB (and optional MYSQL_PORT)
 via environment or ``.env`` — same as the main application.
 
-Usage::
+Usage (many EC2 images have ``python3`` but not ``python`` on PATH)::
 
     uv run python scripts/sql_stress.py
     uv run python scripts/sql_stress.py --concurrency 50 --rounds 2
+    python3 scripts/sql_stress.py --concurrency 100 --rounds 1
 
 Exit code 0 only when every scheduled query succeeds (see report on stderr).
 """
