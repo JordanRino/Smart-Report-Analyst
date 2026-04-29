@@ -6,9 +6,11 @@ via environment or ``.env`` — same as the main application.
 
 Usage (many EC2 images have ``python3`` but not ``python`` on PATH)::
 
-    uv run python scripts/sql_stress.py
-    uv run python scripts/sql_stress.py --concurrency 50 --rounds 2
-    python3 scripts/sql_stress.py --concurrency 100 --rounds 1
+    uv sync
+    uv run python scripts/sql_stress.py --concurrency 100 --rounds 1
+
+Do **not** use the OS ``python3`` if it is older than 3.13 — this package targets
+Python **>= 3.13** (see ``pyproject.toml``). ``uv run`` uses the project's venv.
 
 Exit code 0 only when every scheduled query succeeds (see report on stderr).
 """
@@ -18,6 +20,39 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from pathlib import Path
+
+# Allow `python scripts/sql_stress.py` from repo root without a prior `pip install -e .`
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_SRC = _REPO_ROOT / "src"
+if _SRC.is_dir():
+    sys.path.insert(0, str(_SRC))
+
+_MIN_PY = (3, 13)
+
+
+def _ensure_python_and_package() -> None:
+    if sys.version_info < _MIN_PY:
+        print(
+            f"Need Python {_MIN_PY[0]}.{_MIN_PY[1]}+ (this interpreter is "
+            f"{sys.version_info.major}.{sys.version_info.minor}).\n"
+            "From the repo root:\n"
+            "  uv sync\n"
+            "  uv run python scripts/sql_stress.py [args]\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    try:
+        import smart_report_analyst  # noqa: F401
+    except ImportError as e:
+        print(
+            "Cannot import smart_report_analyst. From the repo root run:\n"
+            "  uv sync\n"
+            "  uv run python scripts/sql_stress.py [args]\n"
+            f"Original error: {e}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2) from e
 
 
 async def _async_main() -> int:
@@ -64,6 +99,7 @@ async def _async_main() -> int:
 
 
 def main() -> None:
+    _ensure_python_and_package()
     raise SystemExit(asyncio.run(_async_main()))
 
 
