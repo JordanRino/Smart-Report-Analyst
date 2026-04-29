@@ -41,6 +41,11 @@ smart-report-analyst = "smart_report_analyst.__main__:main"
 
 # No build system needed - this is just for dependency management
 
+[tool.pytest.ini_options]
+markers = [
+    "stress: optional integration tests that hit external services or heavy load",
+]
+
 [tool.uv]
 # Use 'copy' instead of 'hardlink' for OneDrive compatibility
 # Options: 'hardlink', 'copy', 'symlink'
