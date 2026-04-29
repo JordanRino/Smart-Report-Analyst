@@ -2,21 +2,24 @@
 
 import { CopilotKit } from "@copilotkit/react-core";
 import { getCopilotPublicApiKey, getCopilotRuntimeUrl } from "@/lib/env";
-import { useApp } from "@/context/AppContext";
-
-
-const COPILOT_AGENT_NAME = "loan_report_analyst_agent";
-
+import { useApp } from "@/providers/AppContext";
 export function CopilotRuntimeProvider({ children }: { children: React.ReactNode }) {
-  const { effectiveThreadId } = useApp();
+  const { effectiveThreadId, pickedAgentId, orchestratorMainAgentId } = useApp();
   const publicApiKey = getCopilotPublicApiKey();
+
+  const properties: Record<string, string> | undefined =
+    pickedAgentId === "sra_orchestrator_agent" && orchestratorMainAgentId
+      ? { mainAgentId: orchestratorMainAgentId }
+      : undefined;
 
   return (
     <CopilotKit
+      key={`${effectiveThreadId}:${pickedAgentId}:${orchestratorMainAgentId ?? ""}`}
       runtimeUrl={getCopilotRuntimeUrl()}
       publicApiKey={publicApiKey}
       threadId={effectiveThreadId}
-      agent={COPILOT_AGENT_NAME}
+      agent={pickedAgentId}
+      properties={properties}
       useSingleEndpoint={false}
     >
       {children}

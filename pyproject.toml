@@ -20,6 +20,7 @@ dependencies = [
     "boto3>=1.42.71",
     "reportlab>=4.4.10",
     "pandas>=2.3.3",
+    "markdown-pdf>=1.13.1",
     "aiomysql>=0.3.2",
     "bcrypt>=5.0.0",
     "strands-agents>=1.33.0",

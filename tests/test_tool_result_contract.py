@@ -1,6 +1,6 @@
 """tool_result shape vs PDF / report helpers."""
 
-from smart_report_analyst.service.report_generation.manager import generate_pdf
+from smart_report_analyst.service.reports.manager import generate_pdf
 
 
 def test_generate_pdf_accepts_normalized_tool_result():

@@ -1,4 +1,4 @@
-"""Strands tools: KB retrieve and SQL Lambda execution."""
+"""Strands tools: KB retrieve, SQL execution, and narrative report generation."""
 
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ from smart_report_analyst.service.agent_trace.events import TraceEvent, TraceKin
 from smart_report_analyst.service.bedrock.kb_manager import KnowledgeBaseRetriever
 from smart_report_analyst.service.persistence.mysql.app_data_layer import app_data_layer
 from smart_report_analyst.service.bedrock.kb_manager import format_kb_trace_preview
+from smart_report_analyst.service.reports.narrative_pdf import render_narrative_pdf
+from smart_report_analyst.service.reports.reports_store import ReportsStore
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +36,14 @@ def _truncate_sql(q: str, limit: int = _MAX_SQL_TRACE_CHARS) -> str:
 
 @dataclass
 class StrandsTurnState:
-    """Per-turn mutable state (last execute_sql result for UI + optional trace queue)."""
+    """Per-turn mutable state shared across orchestrator and sub-agents."""
 
     last_tool_result: dict = field(default_factory=dict)
+    last_metadata_tool_result: dict = field(default_factory=dict)
+    # Set by generate_report_pdf (report_id, title, …); agent.py emits deliver_report AG-UI when report_id is set.
+    last_report_result: dict = field(default_factory=dict)
+    # Copilot thread_id injected by runner so tools can use it without model passing it.
+    thread_id: str = ""
     trace_queue: asyncio.Queue | None = None
     trace_run_id: str = ""
     trace_thread_id: str = ""
@@ -202,3 +209,136 @@ def build_strands_tools(turn_state: StrandsTurnState) -> list:
                 )
 
     return [retrieve_kb_context, execute_sql]
+
+
+def build_metadata_tools(turn_state: StrandsTurnState) -> list:
+    """Tools for the orchestrator-attached metadata updater (session MySQL only)."""
+
+    @tool
+    async def execute_metadata_sql(query: str, user_refined_question: str, to_store: bool) -> dict:
+        """
+        Execute SQL for **session metadata** tables (upload-derived glossary / sidecar schema).
+
+        Same JSON shape as ``execute_sql`` for the UI. Use **only** for DDL/DML against
+        session metadata tables (typically ``md_<team>_<threadid>`` created from CSV headers).
+
+        Args:
+            query: SQL to run (CREATE / INSERT / UPDATE / DELETE / SELECT as needed).
+            user_refined_question: Short description of what this metadata change does.
+            to_store: Same flag as ``execute_sql`` (typically false for metadata DDL).
+        """
+        t0 = _now_ms()
+        step_name = turn_state.next_tool_step_name("execute_metadata_sql")
+        await turn_state.emit_trace_async(
+            TraceKind.STEP_STARTED, {"step_name": step_name}
+        )
+        await turn_state.emit_trace_async(
+            TraceKind.REASONING_LINE,
+            {"text": f"Running metadata SQL ({_truncate_sql(query)})\n"},
+        )
+        try:
+            body = await app_data_layer.execute_metadata_sql(
+                query, user_refined_question, to_store
+            )
+            turn_state.last_metadata_tool_result = body
+            rc = body.get("row_count", 0)
+            await turn_state.emit_trace_async(
+                TraceKind.REASONING_LINE,
+                {"text": f"Metadata SQL finished: {rc} row(s) returned.\n"},
+            )
+            return body
+        except Exception as e:
+            logger.exception("execute_metadata_sql failed")
+            err = {
+                "error": True,
+                "message": str(e),
+                "refined_user_question": user_refined_question,
+                "executed_sql": query,
+                "results": [],
+                "row_count": 0,
+                "to_store": False,
+            }
+            turn_state.last_metadata_tool_result = err
+            await turn_state.emit_trace_async(
+                TraceKind.REASONING_LINE,
+                {"text": f"Metadata SQL error: {str(e)[:200]}\n"},
+            )
+            return err
+        finally:
+            await turn_state.emit_trace_async(
+                TraceKind.STEP_FINISHED, {"step_name": step_name}
+            )
+            dt = _now_ms() - t0
+            if dt >= 0:
+                await turn_state.emit_trace_async(
+                    TraceKind.CUSTOM,
+                    {
+                        "name": "tool_timing_ms",
+                        "value": {"tool": "execute_metadata_sql", "duration_ms": dt},
+                    },
+                )
+
+    return [execute_metadata_sql]
+
+
+def build_report_builder_tools(turn_state: StrandsTurnState) -> list:
+    """Tools available to the orchestrator for delivering narrative reports to the UI."""
+
+    @tool
+    async def generate_report_pdf(report_content: str, title: str) -> str:
+        """
+        Render a narrative markdown report to PDF, save it permanently, and deliver it
+        as a report card in the chat UI.
+
+        Call this AFTER the report_builder has produced its final markdown output and the
+        user has confirmed the brief. Pass the complete markdown text and a concise title.
+
+        Args:
+            report_content: Full markdown text of the report (Title, Intro, Body, Summary sections).
+            title: Short human-readable title for the report (used as filename and dashboard label).
+
+        Returns:
+            Confirmation string with the permanent report_id for the orchestrator to relay.
+        """
+        step_name = turn_state.next_tool_step_name("generate_report_pdf")
+        await turn_state.emit_trace_async(TraceKind.STEP_STARTED, {"step_name": step_name})
+        await turn_state.emit_trace_async(
+            TraceKind.REASONING_LINE, {"text": f"Rendering PDF: {title!r}…\n"}
+        )
+        try:
+            pdf_bytes = await asyncio.to_thread(render_narrative_pdf, report_content, title)
+
+            # Auto-save permanently so the report survives navigation and history replay.
+            store = ReportsStore()
+            saved = await asyncio.to_thread(
+                store.save_report_from_markdown,
+                pdf_bytes=pdf_bytes,
+                markdown_content=report_content,
+                title=title,
+                thread_id=turn_state.thread_id,
+                agent_id="sra_orchestrator_agent",
+            )
+            report_id = saved["id"]
+
+            turn_state.last_report_result = {
+                "report_id": report_id,
+                "title": title,
+                "markdown_content": report_content,
+            }
+            await turn_state.emit_trace_async(
+                TraceKind.REASONING_LINE,
+                {"text": f"Report saved (id={report_id}).\n"},
+            )
+            return (
+                f"Report saved successfully. report_id={report_id} title={title!r}. "
+                "The report card will appear in the chat for the user to preview and download."
+            )
+        except Exception as exc:
+            logger.exception("generate_report_pdf failed")
+            return f"Report generation failed: {exc}"
+        finally:
+            await turn_state.emit_trace_async(
+                TraceKind.STEP_FINISHED, {"step_name": step_name}
+            )
+
+    return [generate_report_pdf]

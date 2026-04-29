@@ -6,7 +6,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, cast
 
 from copilotkit.action import ActionDict
 from copilotkit.agent import Agent
@@ -38,7 +38,10 @@ from smart_report_analyst.service.agent_trace.events import TraceEvent
 from smart_report_analyst.service.feedback.snapshot_index import (
     register_feedback_snapshot,
 )
+from smart_report_analyst.service.strands.agents.registry import AGENT_ORCHESTRATOR
 from smart_report_analyst.service.strands.runner import run_stream
+from smart_report_analyst.service.strands.session.orchestrator_state import get_main_agent_id
+from smart_report_analyst.service.strands.user_turn import parse_user_turn_from_messages
 from smart_report_analyst.service.strands.session.reader import (
     get_copilot_state_for_thread,
 )
@@ -46,6 +49,7 @@ from smart_report_analyst.service.strands.session.reader import (
 logger = logging.getLogger(__name__)
 
 ACTION_EXECUTE_SQL = "execute_sql"
+ACTION_EXECUTE_METADATA_SQL = "execute_metadata_sql"
 
 
 def _ts_ms() -> int:
@@ -107,31 +111,97 @@ def _yield_execute_sql_tool_events(
     )
 
 
-def _message_role_str(msg: Message) -> str:
-    r = msg.get("role")
-    if r is None:
-        return ""
-    return r.value if hasattr(r, "value") else str(r)
+def _yield_execute_metadata_sql_tool_events(
+    *,
+    thread_id: str,
+    metadata_tool_result: dict[str, Any],
+    parent_message_id: str,
+) -> Iterator[str]:
+    """AG-UI frames for ``execute_metadata_sql`` (same payload shape as ``execute_sql``)."""
+    if not metadata_tool_result or metadata_tool_result.get("error"):
+        return
+    executed = metadata_tool_result.get("executed_sql")
+    results = metadata_tool_result.get("results")
+    if executed is None or results is None:
+        return
+    if not isinstance(results, list):
+        results = list(results)
+
+    tool_call_id = str(uuid.uuid4())
+    result_message_id = str(uuid.uuid4())
+    args_obj = {
+        "query": str(executed),
+        "results": results,
+        "refined_user_question": metadata_tool_result.get("refined_user_question"),
+        "row_count": metadata_tool_result.get("row_count"),
+        "to_store": metadata_tool_result.get("to_store"),
+    }
+    args_json = json.dumps(args_obj, default=str)
+
+    t = _ts_ms()
+    yield agui_tool_call_start(
+        tool_call_id=tool_call_id,
+        tool_call_name=ACTION_EXECUTE_METADATA_SQL,
+        parent_message_id=parent_message_id,
+        timestamp=t,
+    )
+    yield agui_tool_call_args(tool_call_id=tool_call_id, delta=args_json, timestamp=t)
+    yield agui_tool_call_end(tool_call_id=tool_call_id, timestamp=t)
+    yield agui_tool_call_result(
+        message_id=result_message_id,
+        tool_call_id=tool_call_id,
+        content=args_json,
+        timestamp=t,
+    )
 
 
-def _last_user_text(messages: list[Message]) -> str:
-    """Latest user text from CopilotKit message list (JSON uses string roles)."""
-    for msg in reversed(messages):
-        if _message_role_str(msg) != "user":
-            continue
-        content = msg.get("content", "")
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts: list[str] = []
-            for block in content:
-                if isinstance(block, dict) and "text" in block:
-                    parts.append(str(block["text"]))
-                elif isinstance(block, str):
-                    parts.append(block)
-            return "".join(parts)
-        return str(content)
-    return ""
+def _yield_deliver_report_tool_events(
+    *,
+    report_result: dict[str, Any],
+    parent_message_id: str,
+) -> Iterator[str]:
+    """AG-UI tool-call SSE frames for the deliver_report action (narrative PDF card)."""
+    report_id = report_result.get("report_id")
+    if not report_id:
+        return
+    tool_call_id = str(uuid.uuid4())
+    result_message_id = str(uuid.uuid4())
+    args_obj = {
+        "report_id": report_id,
+        "title": report_result.get("title", ""),
+    }
+    args_json = json.dumps(args_obj, default=str)
+    t = _ts_ms()
+    yield agui_tool_call_start(
+        tool_call_id=tool_call_id,
+        tool_call_name="deliver_report",
+        parent_message_id=parent_message_id,
+        timestamp=t,
+    )
+    yield agui_tool_call_args(tool_call_id=tool_call_id, delta=args_json, timestamp=t)
+    yield agui_tool_call_end(tool_call_id=tool_call_id, timestamp=t)
+    yield agui_tool_call_result(
+        message_id=result_message_id,
+        tool_call_id=tool_call_id,
+        content=args_json,
+        timestamp=t,
+    )
+
+
+def _properties_from_execute(*, config: dict | None, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Resolve Copilot ``properties`` (top-level request body + optional config)."""
+    props: dict[str, Any] = {}
+    if isinstance(config, dict):
+        cfg_props = config.get("properties")
+        if isinstance(cfg_props, dict):
+            props.update(cfg_props)
+        mid = config.get("mainAgentId")
+        if isinstance(mid, str) and mid.strip():
+            props.setdefault("mainAgentId", mid.strip())
+    raw = kwargs.get("properties")
+    if isinstance(raw, dict):
+        props.update(raw)
+    return props
 
 
 class StrandsCopilotAgent(Agent):
@@ -143,7 +213,7 @@ class StrandsCopilotAgent(Agent):
     def __init__(
         self,
         *,
-        name: str = "loan_analyst_agent",
+        name: str = "wlr_reporting_agent",
         description: str | None = None,
     ) -> None:
         super().__init__(
@@ -173,12 +243,29 @@ class StrandsCopilotAgent(Agent):
         meta_events: Optional[list[MetaEvent]] = None,
         **kwargs: Any,
     ):
-        _ = state, config, actions, meta_events, kwargs
+        _ = state, actions, meta_events
 
-        user_message = _last_user_text(messages)
+        raw_msgs: list[dict[str, Any]] = [
+            dict(m) if not isinstance(m, dict) else cast(dict[str, Any], m)
+            for m in messages
+        ]
+        payload = parse_user_turn_from_messages(raw_msgs)
+        props = _properties_from_execute(config=config, kwargs=kwargs)
         run_id = str(uuid.uuid4())
 
-        if not user_message.strip():
+        # For the orchestrator: persisted state is the authoritative source for mainAgentId.
+        # Props-based value is kept as a fallback for the first message of a session where
+        # the frontend may have sent it before the state write completes (race-free in
+        # practice since setSpecialist fires on pick, before the first message).
+        if self.name == AGENT_ORCHESTRATOR:
+            mid = get_main_agent_id(thread_id) or (
+                props.get("mainAgentId", "").strip() or None
+            )
+        else:
+            raw_mid = props.get("mainAgentId")
+            mid = raw_mid.strip() if isinstance(raw_mid, str) and raw_mid.strip() else None
+
+        if not payload.text.strip() and not payload.attachments:
             t = _ts_ms()
             yield agui_run_started(thread_id=thread_id, run_id=run_id, timestamp=t)
             yield agui_state_snapshot(snapshot={"tool_result": {}}, timestamp=t)
@@ -199,6 +286,7 @@ class StrandsCopilotAgent(Agent):
             yield frame
 
         final_tool_result: dict[str, Any] = {}
+        run_state = None  # StrandsTurnState captured from the final turn_state event
         first_text_chunk = False
         reasoning_shell_open = True
 
@@ -217,10 +305,11 @@ class StrandsCopilotAgent(Agent):
 
         try:
             async for event in run_stream(
-                user_message,
+                payload,
                 thread_id,
                 run_id=run_id,
                 agent_name=self.name,
+                main_agent_id=mid,
             ):
                 et = event.get("type")
                 if et == "trace":
@@ -255,6 +344,8 @@ class StrandsCopilotAgent(Agent):
                 elif et == "tool_result":
                     raw = event.get("data")
                     final_tool_result = raw if isinstance(raw, dict) else {}
+                elif et == "turn_state":
+                    run_state = event.get("data")
         except Exception:
             logger.exception("strands_copilotkit_agent_execute")
             raise
@@ -270,12 +361,33 @@ class StrandsCopilotAgent(Agent):
             yield frame
         yield agui_text_message_end(message_id=message_id, timestamp=t_end)
 
-        for frame in _yield_execute_sql_tool_events(
-            thread_id=thread_id,
-            final_tool_result=final_tool_result,
-            parent_message_id=message_id,
-        ):
-            yield frame
+        sql_emit_agent_names = {
+            "wlr_reporting_agent",
+            AGENT_ORCHESTRATOR,
+        }
+        if self.name in sql_emit_agent_names:
+            for frame in _yield_execute_sql_tool_events(
+                thread_id=thread_id,
+                final_tool_result=final_tool_result,
+                parent_message_id=message_id,
+            ):
+                yield frame
+            if run_state and run_state.last_metadata_tool_result:
+                for frame in _yield_execute_metadata_sql_tool_events(
+                    thread_id=thread_id,
+                    metadata_tool_result=run_state.last_metadata_tool_result,
+                    parent_message_id=message_id,
+                ):
+                    yield frame
+
+        # Emit deliver_report action if generate_report_pdf saved a permanent report.
+        report_result = run_state.last_report_result if run_state else {}
+        if report_result and report_result.get("report_id"):
+            for frame in _yield_deliver_report_tool_events(
+                report_result=report_result,
+                parent_message_id=message_id,
+            ):
+                yield frame
 
         t3 = _ts_ms()
         yield agui_state_snapshot(
@@ -289,4 +401,4 @@ class StrandsCopilotAgent(Agent):
         *,
         thread_id: str,
     ) -> dict[str, Any]:
-        return get_copilot_state_for_thread(thread_id or "")
+        return get_copilot_state_for_thread(thread_id or "", agent_name=self.name)

@@ -1,4 +1,4 @@
-"""Build Strands Agent with SRA system prompt and tools."""
+"""Build Strands Agent(s): specialists, report builder, and session orchestrator."""
 
 from __future__ import annotations
 
@@ -7,199 +7,270 @@ from typing import Any
 
 from strands import Agent
 
+from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.bedrock.model_manager import build_bedrock_model
-from smart_report_analyst.service.strands.tools import StrandsTurnState, build_strands_tools
+from smart_report_analyst.service.strands.agents.metadata_updater_prompt import (
+    METADATA_UPDATER_INSTRUCTIONS,
+)
+from smart_report_analyst.service.strands.agents.prompts import (
+    ORCHESTRATOR_INSTRUCTIONS,
+    REPORT_BUILDER_INSTRUCTIONS,
+    ROUTER_INSTRUCTIONS,
+    WLR_REPORTING_INSTRUCTIONS,
+    WLR_VERIFICATION_DISCIPLINE,
+)
+from smart_report_analyst.service.strands.agents.registry import (
+    AGENT_ORCHESTRATOR,
+    resolve_main_specialist,
+)
+from smart_report_analyst.service.strands.session import (
+    build_strands_session_manager,
+)
+from smart_report_analyst.service.strands.session.scoped import composite_session_id
+from smart_report_analyst.service.strands.conversation import build_strands_conversation_manager
+from smart_report_analyst.service.strands.tools import (
+    StrandsTurnState,
+    build_metadata_tools,
+    build_report_builder_tools,
+    build_strands_tools,
+)
+
 logger = logging.getLogger(__name__)
 
-INSTRUCTIONS = """
+# Backward-compatible name for the WLR reporting specialist prompt.
+INSTRUCTIONS = WLR_REPORTING_INSTRUCTIONS
 
-All-In-One agent 
+
+def _specialist_system_prompt(agent_id: str) -> str:
+    _ = resolve_main_specialist(agent_id)
+    return (WLR_REPORTING_INSTRUCTIONS + WLR_VERIFICATION_DISCIPLINE).strip()
 
 
-Role:
-Coordinator Agent for Smart Report Analyst (SRA). The agent answers analytical questions about SBA loan data by ALWAYS generating SQL queries using database metadata and ALWAYS executing the generated SQL through Strands tools.
+def create_specialist_agent(
+    turn_state: StrandsTurnState,
+    session_manager: Any | None = None,
+    conversation_manager: Any | None = None,
+    *,
+    agent_id: str,
+    system_prompt: str | None = None,
+    with_tools: bool = True,
+) -> Agent:
+    """
+    Specialist with KB + SQL (same tools for all registered main specialists today).
 
-Objective:
-Interpret user questions about SBA loan data, retrieve schema information from the metadata knowledge base, GENERATE accurate SQL queries, ALWAYS EXECUTE the generated SQL queries using the Strands tools, and produce clear analytical responses. All SQL queries in the final response must be displayed in properly formatted Markdown `sql` code blocks, and database results must be clearly summarized.
+    ``agent_id`` selects prompt flavor from the registry (currently WLR-style only).
+    """
+    model = build_bedrock_model()
+    tools = build_strands_tools(turn_state) if with_tools else []
+    sp = (
+        system_prompt.strip()
+        if system_prompt is not None
+        else _specialist_system_prompt(agent_id)
+    )
+    meta = resolve_main_specialist(agent_id)
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "tools": tools,
+        "system_prompt": sp,
+        "callback_handler": None,
+        "name": meta.agent_id.replace("-", "_"),
+        "description": meta.display_name,
+    }
+    if session_manager is not None:
+        kwargs["session_manager"] = session_manager
+        kwargs["messages"] = None
+    if conversation_manager is not None:
+        kwargs["conversation_manager"] = conversation_manager
+    return Agent(**kwargs)
 
-Scope and refusals (STRICT):
-- ONLY answer requests that are about analyzing, filtering, aggregating, or reporting on SBA / small-business loan records available through this application's database and tools.
-- If the user asks for anything outside that scope (for example: current time, weather, general chit-chat, unrelated trivia, personal tax or legal or medical advice, politics, global macroeconomics, investment picks, or other topics with no tie to SBA loan data analysis), you MUST refuse briefly and MUST NOT call retrieve_kb_context or execute_sql for that turn.
-- After refusing, you may invite the user to rephrase as a data question about the loan dataset.
 
----
+def create_report_builder_agent(
+    _turn_state: StrandsTurnState,
+    session_manager: Any | None = None,
+    conversation_manager: Any | None = None,
+) -> Agent:
+    """Narrative report writer: no KB/SQL."""
+    model = build_bedrock_model()
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "tools": [],
+        "system_prompt": REPORT_BUILDER_INSTRUCTIONS.strip(),
+        "callback_handler": None,
+        "name": "report_builder",
+        "description": "Writes reports from a structured brief and supplied text only (no database).",
+    }
+    if session_manager is not None:
+        kwargs["session_manager"] = session_manager
+        kwargs["messages"] = None
+    if conversation_manager is not None:
+        kwargs["conversation_manager"] = conversation_manager
+    return Agent(**kwargs)
 
-Available Resources
 
-TOOL - retrieve_kb_context (Knowledge Base):
-- Contains database metadata including tables, columns, data types, and descriptions.
-- Also contains previously successful SQL queries paired with the user questions that generated them.
-- MUST be used to determine valid schema elements when generating SQL queries.
-- SHOULD also be used to retrieve similar past questions to learn and reuse successful SQL patterns when relevant.
+def create_metadata_updater_agent(
+    turn_state: StrandsTurnState,
+    session_manager: Any | None = None,
+    conversation_manager: Any | None = None,
+) -> Agent:
+    """
+    Session metadata writer: app MySQL via ``execute_metadata_sql`` only.
+    Invoked as a tool by the orchestrator (not a Copilot-pickable team agent).
+    """
+    model = build_bedrock_model()
+    tools = build_metadata_tools(turn_state)
+    sp = METADATA_UPDATER_INSTRUCTIONS.strip()
+    tid = (turn_state.thread_id or "").strip()
+    if tid:
+        sp = (
+            f"{sp}\n\n---\nSession context\n"
+            f"- Copilot **thread_id** (use verbatim in SQL for ``thread_id`` / scope): `{tid}`\n"
+        )
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "tools": tools,
+        "system_prompt": sp,
+        "callback_handler": None,
+        "name": "metadata_updater",
+        "description": (
+            "Creates or updates session-scoped metadata in app MySQL from uploads and user choices. "
+            "Pass thread_id, chosen team agent, create-vs-update mode, and the user's goal."
+        ),
+    }
+    if session_manager is not None:
+        kwargs["session_manager"] = session_manager
+        kwargs["messages"] = None
+    if conversation_manager is not None:
+        kwargs["conversation_manager"] = conversation_manager
+    return Agent(**kwargs)
 
-TOOL - execute_sql:
-- Executes SQL queries through a Lambda function connected to the SBA loan RDS database in Amazon RDS.
-- The SQL query MUST be passed in the parameter named "query".
-- The refined version of the user question MUST be passed in the parameter named "user_refined_question".
-- A boolean flag "to_store" MUST also be passed to indicate whether this query should be stored.
 
-Parameter rules:
-- query: The SQL query that will be executed.
-- user_refined_question: A clear and concise version of the user's original question corresponding to the SQL query.
-to_store decision rules (STRICT):
-- Set to_store = false ONLY if an IDENTICAL question and SQL query already exist in the knowledge base.
-- Set to_store = true if ANY of the following differ:
-  - The filter conditions (e.g., different MIS_Status values like 'PIF' vs 'CHGOFF')
-  - The aggregation logic
-  - The columns selected
-  - The business meaning of the question
-DO NOT treat queries as duplicates based only on structural similarity.
-Two queries are considered duplicates ONLY if they are semantically identical and would return the same type of result for the same intent.
+def create_orchestrator_agent(
+    turn_state: StrandsTurnState,
+    *,
+    main_agent_id: str,
+    copilot_thread_id: str,
+    orchestrator_session_manager: Any | None,
+    orchestrator_conversation_manager: Any | None,
+) -> Agent:
+    """
+    Orchestrator with ``main_specialist``, ``report_builder``, and ``metadata_updater`` tools.
 
-Tool Response Format:
+    ``turn_state`` is shared with the specialist so ``execute_sql`` results surface on the
+    outer Copilot run for AG-UI. The specialist uses ``preserve_context=True`` as_tool when
+    a session_manager is present (Strands requirement).
+    """
+    get_settings()  # fail fast if misconfigured (parity with run_stream validation)
 
-The execute_sql tool returns a JSON object with the following fields:
+    tid = (copilot_thread_id or "").strip()
+    specialist_sid = composite_session_id(tid, f"{AGENT_ORCHESTRATOR}_ms_{main_agent_id}")
+    specialist_sm = build_strands_session_manager(specialist_sid)
+    specialist_cm = build_strands_conversation_manager()
+    specialist = create_specialist_agent(
+        turn_state,
+        session_manager=specialist_sm,
+        conversation_manager=specialist_cm,
+        agent_id=main_agent_id,
+        with_tools=True,
+    )
 
-{
-  "refined_user_question": "string containing the cleaned/normalized user query",
-  "executed_sql": "string containing the SQL query that was run",
-  "results": [
-    { "column1": "value", "column2": "value" }
-  ],
-  "row_count": number_of_rows_returned,
-  "to_store": true_or_false
-}
+    builder_sid = composite_session_id(tid, f"{AGENT_ORCHESTRATOR}_report_builder")
+    builder_sm = build_strands_session_manager(builder_sid)
+    builder_cm = build_strands_conversation_manager()
+    builder = create_report_builder_agent(
+        turn_state,
+        session_manager=builder_sm,
+        conversation_manager=builder_cm,
+    )
 
-Explanation:
-- refined_user_question – a cleaned and standardized version of the user's original question. This should be used for storage and deduplication.
-- executed_sql – the SQL query that was executed against the database.
-- results – an array of rows returned from the database. Each row is a JSON object where keys are column names.
-- row_count – the number of rows returned by the query.
-- to_store – a boolean flag indicating whether this refined_user_question-SQL query pair should be stored in the knowledge base. This is typically true only for non-duplicate queries (meaning if the knowledge base generates a new SQL query using the metadata).
+    metadata_sid = composite_session_id(tid, f"{AGENT_ORCHESTRATOR}_metadata_updater")
+    metadata_sm = build_strands_session_manager(metadata_sid)
+    metadata_cm = build_strands_conversation_manager()
+    metadata_agent = create_metadata_updater_agent(
+        turn_state,
+        session_manager=metadata_sm,
+        conversation_manager=metadata_cm,
+    )
 
----
+    meta = resolve_main_specialist(main_agent_id)
+    main_tool = specialist.as_tool(
+        name="main_specialist",
+        description=(
+            f"Data specialist ({meta.display_name}): KB retrieval, SQL execution, "
+            "and cross-checking uploaded reports or metrics against the database. "
+            "Pass a clear natural-language task."
+        ),
+        preserve_context=True,
+    )
+    builder_tool = builder.as_tool(
+        name="report_builder",
+        description=(
+            "Writes formatted narrative reports from a structured brief and supplied excerpts only. "
+            "No database access — confirm numbers with main_specialist first if needed."
+        ),
+        preserve_context=True,
+    )
+    metadata_tool = metadata_agent.as_tool(
+        name="metadata_updater",
+        description=(
+            "Creates or updates session metadata in app MySQL (upload-derived glossary). "
+            "Pass thread_id, which team's metadata (e.g. WLR), create-new vs update-existing, "
+            "user goal, and file summary. Not shown in the team agent picker."
+        ),
+        preserve_context=True,
+    )
 
-Workflow
+    report_tools = build_report_builder_tools(turn_state)
 
-1. Understand the Question
-- Analyze the user's request to determine what data is required.
-- Identify relevant entities such as locations, dates, loan metrics, or aggregations.
-
-2. retrieve_kb_context tool - Retrieve Knowledge Base Information
-
-- CALL THE retrieve_kb_context tool with a focused search string to identify appropriate tables, columns, and data types.
-- Retrieve relevant database schema metadata to confirm valid table and column names.
-- ALSO retrieve previously successful SQL queries that are similar to the user's question.
-- Use these past queries as references to improve SQL accuracy and follow proven query patterns.
-- Determine whether a matching or highly similar SQL query already exists.
-
-Decision rule:
-- If a matching or highly similar SQL query is found → set to_store = false.
-- If NO matching SQL query is found → set to_store = true.
-- ONLY use schema elements confirmed by the knowledge base.
-
-3. Generate SQL Query
-- Construct a VALID SQL query that answers the user's question using verified schema and, when applicable, patterns from previously successful SQL queries.
-- Ensure the query is clear, efficient, and logically structured.
-- Use filtering, grouping, aggregation, or ordering when necessary.
-
-4. execute_sql - MUST ALWAYS Execute SQL Query
-- CALL THE execute_sql tool with the generated SQL query.
-- The SQL query MUST be passed in the parameter named "query".
-- A refined version of the user's question MUST also be passed in the parameter named "user_refined_question".
-- The to_store flag MUST also be passed based on knowledge base evaluation.
-
-JUST AN Example:
-
-Call execute_sql with:
-{
-  "query": "SELECT Bank, COUNT(*) AS total_loans
-            FROM sba_loans_kendra
-            GROUP BY Bank
-            ORDER BY total_loans DESC;",
-  "user_refined_question": "Count the total number of SBA loans issued by each bank and sort the results by the highest number of loans.",
-  "to_store": true
-}
-- The tool will execute this SQL query against the SBA loan database and return results in the format specified below.
-
-5. Evaluate Results
-- The tool response will contain:
-  - executed_sql
-  - results
-  - row_count
-- Review the "results" field to determine whether the query answered the user's question.
-- Use the returned rows to compute summaries if needed.
-- If the results are incomplete, empty, or inconsistent with the user request, REFINE the SQL query and EXECUTE it again.
-
-6. Refine if Necessary
-- If results are incomplete, empty, or inconsistent with the user request:
-  - REFINE the SQL query.
-  - EXECUTE the revised query again.
-  - Always pass "query" and "user_refined_question" and "to_store" parameters again.
-
-7. Produce Final Response
-- Summarize the findings clearly and concisely, organizing results into topic/subtopic bullet points or tabular format where appropriate for readability.
-- ALWAYS include the SQL QUERY used to retrieve the data in a Markdown `sql` code block after the summary.
-
-JUST AN example final response structure:
-
-**Summary of Findings:**
-
-- **Total Loans by Bank:**
-  - Bank of America: 1,250 loans
-  - JPMorgan Chase: 980 loans
-  - Wells Fargo: 1,100 loans
-
-**SQL Query Used:**
-
-```sql
-SELECT Bank, COUNT(*) AS total_loans
-FROM sba_loans_kendra
-GROUP BY Bank
-ORDER BY total_loans DESC;
-```
-
-Guidelines
-
-- ALWAYS consult the METADATA KNOWLEDGE BASE before generating SQL queries.
-- ONLY use tables and columns confirmed by the knowledge base.
-- ALWAYS execute SQL through the Strands tools.
-- ALWAYS determine whether a similar SQL query already exists in the knowledge base before execution.
-- ALWAYS pass the BELOW parameters when calling the tools:
-  - query
-  - user_refined_question
-  - to_store
-- ALWAYS pass the "to_store" flag:
-  - true → only when no similar query exists in the knowledge base and the knowledge base generates a new SQL query using the metadata schema.
-  - false → when a matching or similar query is found and being reused.
-- NEVER assume database schema details without verification.
-- ENSURE SQL queries are syntactically correct and efficient.
-- If an execution error occurs, ANALYZE the error and REFINE the query.
-- If the result set is empty, consider whether the query conditions need adjustment.
-- NEVER hide the SQL query or the database results in the final response.
-- ALL SQL queries in the final output must be formatted as Markdown sql code blocks, and results must be clearly summarized for the user.
-"""
-
+    model = build_bedrock_model()
+    orch_kwargs: dict[str, Any] = {
+        "model": model,
+        "tools": [main_tool, builder_tool, metadata_tool] + report_tools,
+        "system_prompt": ORCHESTRATOR_INSTRUCTIONS.strip(),
+        "callback_handler": None,
+        "name": AGENT_ORCHESTRATOR,
+        "description": (
+            "Orchestrates reporting: routes to the selected data specialist, report builder, "
+            "and metadata updater (session MySQL)."
+        ),
+    }
+    if orchestrator_session_manager is not None:
+        orch_kwargs["session_manager"] = orchestrator_session_manager
+        orch_kwargs["messages"] = None
+    if orchestrator_conversation_manager is not None:
+        orch_kwargs["conversation_manager"] = orchestrator_conversation_manager
+    return Agent(**orch_kwargs)
 
 
 def create_strands_agent(
     turn_state: StrandsTurnState,
     session_manager: Any | None = None,
     conversation_manager: Any | None = None,
+    *,
+    agent_id: str | None = None,
+    system_prompt: str | None = None,
+    with_tools: bool = True,
 ) -> Agent:
     """
-    Create an Agent for one turn.
+    Default single-agent factory (backward compatible): WLR specialist when tools are on,
+    otherwise router-style agent with ``ROUTER_INSTRUCTIONS``.
 
-    When ``session_manager`` is set (STRANDS_SESSION_PERSISTENCE), history is loaded from the
-    session store.
+    ``agent_id`` selects the specialist prompt variant when ``with_tools=True``.
     """
     model = build_bedrock_model()
-    tools = build_strands_tools(turn_state)
-    system_prompt = INSTRUCTIONS.strip()
+    tools = build_strands_tools(turn_state) if with_tools else []
+    specialist_key = (agent_id or "wlr_reporting_agent").strip()
+    if with_tools:
+        sp = (
+            system_prompt.strip()
+            if system_prompt is not None
+            else _specialist_system_prompt(specialist_key)
+        )
+    else:
+        sp = (system_prompt if system_prompt is not None else ROUTER_INSTRUCTIONS).strip()
     kwargs: dict[str, Any] = {
         "model": model,
         "tools": tools,
-        "system_prompt": system_prompt,
+        "system_prompt": sp,
         "callback_handler": None,
     }
     if session_manager is not None:
