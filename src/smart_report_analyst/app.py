@@ -1,8 +1,6 @@
 import asyncio
 import logging
 import uuid
-import subprocess
-from pathlib import Path
 
 from smart_report_analyst.config.settings import get_settings
 from smart_report_analyst.service.bedrock.agent_manager import BedrockManager
@@ -17,7 +15,7 @@ class SmartReportAnalystApp:
         self.bedrock_manager = BedrockManager()
 
     async def run_cli(self):
-        """Start the interactive CLI for the Smart Report Analyst."""
+        """Start the interactive CLI loop."""
         session_id = uuid.uuid4().hex
         strands_history: list[dict] = []
 
@@ -56,6 +54,11 @@ class SmartReportAnalystApp:
                 print("Please try again or type 'exit' to quit.\n")
 
     def run_copilot(self, host: str | None = None, port: int | None = None):
+        """
+        Start the FastAPI server used by the Next.js UI (CopilotKit/AG-UI backend).
+
+        Note: `host`/`port` override environment defaults for this process only.
+        """
 
         import uvicorn
         from fastapi import FastAPI

@@ -43,6 +43,7 @@ router = APIRouter()
 
 
 def get_reports_store() -> ReportsStore:
+    """FastAPI dependency that constructs a per-request `ReportsStore`."""
     return ReportsStore()
 
 

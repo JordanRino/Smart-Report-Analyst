@@ -97,7 +97,7 @@ function AgentRenderMessage(props: RenderMessageProps) {
 export function ChatInterface() {
   const { effectiveThreadId, pickedAgentId, orchestratorMainAgentId } = useApp();
 
-  /** CopilotKit message thumbs-up → server snapshot (agent.py) → MySQL successful_queries. */
+  /** CopilotKit thumbs-up → server snapshot → persistent store (see backend feedback service). */
   const onFeedbackGiven = useCallback(
     (messageId: string, type: "thumbsUp" | "thumbsDown") => {
       if (type !== "thumbsUp" || !effectiveThreadId) return;

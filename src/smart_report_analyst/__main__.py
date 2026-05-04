@@ -7,18 +7,17 @@ from smart_report_analyst.app import SmartReportAnalystApp
 
 
 def main():
-    """Main entry point that determines which mode to run.
-    
-    Usage:
-        python -m smart_report_analyst              # CLI mode
+    """
+    CLI entrypoint for Smart Report Analyst.
+
+    By default, starts an interactive terminal session. With `--copilot`, starts the
+    FastAPI backend used by the Next.js UI (CopilotKit/AG-UI compatible).
     """
 
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout)  # Force logs to stdout
-        ],
+        handlers=[logging.StreamHandler(sys.stdout)],
         force=True
     )
 

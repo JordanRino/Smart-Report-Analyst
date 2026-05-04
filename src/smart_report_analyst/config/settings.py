@@ -208,27 +208,27 @@ class Settings(BaseSettings):
         validation_alias="COPILOT_CORS_ORIGINS",
     )
 
-     # Pydantic Settings configuration
+    # Pydantic Settings configuration.
     model_config = SettingsConfigDict(
-        env_file=".env",  # Automatically load from .env file
+        env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False,  # Case-insensitive environment variables
-        extra="ignore",  # Ignore extra environment variables
+        case_sensitive=False,
+        extra="ignore",
     )
 
     @property
     def is_production(self) -> bool:
-        """Check if running in production."""
+        """Return true when `ENVIRONMENT` is `production`/`prod`."""
         return self.environment.lower() in {"production", "prod"}
 
     @property
     def is_development(self) -> bool:
-        """Check if running in development."""
+        """Return true when `ENVIRONMENT` is `development`/`dev`."""
         return self.environment.lower() in {"development", "dev"}
 
     @property
     def is_staging(self) -> bool:
-        """Check if running in staging/test."""
+        """Return true when `ENVIRONMENT` is `staging`/`stage`/`test`."""
         return self.environment.lower() in {"staging", "stage", "test"}
 
     @property

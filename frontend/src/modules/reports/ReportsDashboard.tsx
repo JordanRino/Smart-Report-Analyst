@@ -57,7 +57,7 @@ export default function ReportsDashboard() {
     void load();
   }, [load]);
 
-  // PDF preview blob URL
+  // PDF preview uses a blob URL so the browser can embed the downloaded bytes in an <object>.
   useEffect(() => {
     if (!previewId) {
       setPreviewUrl((prev) => {

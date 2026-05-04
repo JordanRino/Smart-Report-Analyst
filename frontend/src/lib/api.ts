@@ -1,6 +1,6 @@
 import { getApiPrefix } from "@/lib/env";
 
-// Define your types for strict TypeScript checking
+/** API base URL derived from `NEXT_PUBLIC_API_BASE_URL`. */
 export interface ChatSession {
   id: string;
   name: string;
@@ -45,9 +45,7 @@ export interface SpecialistState {
 }
 
 export const api = {
-  /**
-   * Fetches the list of saved sessions from the backend.
-   */
+  /** List saved chat sessions (sidebar history). */
   async getHistory(): Promise<ChatSession[]> {
     try {
       const response = await fetch(`${API_BASE_URL}/history`);
@@ -57,7 +55,8 @@ export const api = {
       return await response.json();
     } catch (error) {
       console.error("API Error - getHistory:", error);
-      throw error; // Let the component handle the error state
+      // Let the caller own the UI error state.
+      throw error;
     }
   },
 
